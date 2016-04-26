@@ -163,7 +163,9 @@ class SerialTerminal(RemoteExecute):
 
 	def __init__(self, port=None, baudrate=None):
 		self.serial = serial.Serial(port=port, baudrate=baudrate)
-		self.serial.open()
+		already_open = self.serial.isOpen()
+		if not already_open:
+			self.serial.open()
 		RemoteExecute.__init__(self, fp=self.serial, progress=True)
 
 
