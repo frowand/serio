@@ -257,7 +257,7 @@ def main():
 		try:
 			data = sterm.getfile(source)
 			if len(data):
-				open(destination, "rb").write(data)
+				open(destination, "wb").write(data)
 
 			print '\nDownloaded %d bytes from %s to %s' % (len(data), source, destination)
 		except Exception, e:
