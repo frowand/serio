@@ -1,0 +1,244 @@
+#!/usr/bin/env python
+# Small utility to upload/downlaod files to an embedded Linux system via a serial port shell.
+
+import serial
+import sys, os.path, math, time
+from getopt import GetoptError, getopt as GetOpt
+
+class ParseMinicom:
+
+	PATH = "/etc/minicom/"
+	PREFIX = "minirc."
+	CONF = {'baudrate' : None, 'port' : None}
+
+	def __init__(self, name):
+		path = self.PATH + self.PREFIX + name
+		
+		for line in open(path).readlines():
+			for key,value in self.CONF.iteritems():
+				if line.startswith('pu ' + key):
+					self.CONF[key] = line.split(key)[1].strip()
+
+	def setting(self, name):
+		if self.CONF.has_key(name):
+			return self.CONF[name]
+		else:
+			return None
+
+	def baudrate(self):
+		return self.setting('baudrate')
+
+	def port(self):
+		return self.setting('port')
+
+class RemoteExecute:
+
+	DELIM = "THIS IS THE END, BEAUTIFUL FRIEND"
+	IO_TIME = .1
+	BYTES_PER_LINE = 20
+	PRINT_INTERVAL = 256
+
+	def __init__(self, fp, progress=True):
+		if callable(fp.read) and callable(fp.write) and callable(fp.readline) and callable (fp.readlines):
+			self.fp = fp
+			self.current = 0
+			self.showprogress = progress
+		else:
+			raise Exception("bad fp object!")
+
+	def progress(self, current, total):
+		
+		if self.showprogress:
+        
+			if current > total:
+				current = total
+
+		if self.last_size == 0 or current == total or (current - self.last_size) >= self.PRINT_INTERVAL:
+			percent = (current / float(total)) * 100
+			marks = int(math.floor(percent / 2))
+			markstring = "#" * marks
+			dotstring = "." * (50 - marks)
+			sys.stdout.write("\r[%s%s] %0.2f%% (%d / %d)" % (markstring, dotstring, percent, current, total))
+			sys.stdout.flush()
+			self.last_size = current
+
+	def readuntil(self, count=None, lines=None, delim=None):
+		data = ""
+
+		if count is not None:
+
+			for i in range(0, count):
+				data = self.fp.read(1)
+				self.progress(len(data), count)
+
+		elif lines is not None:
+
+			for i in range(0, lines):
+				data += self.fp.readline()
+				self.progress(len(data), len(data))
+
+		elif delim is not None:
+
+			while not data.endswith(delim):
+				data += self.serial.read(1)
+				self.progress((len(data)-len(delim)), (len(data)-len(delim)))
+
+			data = data[0:-len(delim)]
+	
+		self.progress(len(data), len(data))
+		return data
+
+	def execute(self, cmd, count=None, lines=None, delim=None):
+		self.fp.write(cmd + "\n")
+		self.fp.readline()
+
+		return self.readuntil(count, lines, delim)
+
+	def getfile(self, filename):
+		self.execute("cat '%s' && echo '%s'" % (filename, self.DELIM))
+		data = self.readuntil(delim=self.DELIM)
+
+		# Catting data over a terminal turns all \n's to \r\n's
+		data = data.replace("\r\n", "\n")
+
+		return data
+
+	def putfile(self, data, filename):
+                i = 0
+                j = 0
+                data_size = len(data)
+
+                # Create/zero the file
+                self._safe_write('\necho -ne > %s\n' % filename)
+
+		# Loop through all the bytes in the source data and append them to
+		# the destination file BYTES_PER_LINE bytes at a time
+		while i < data_size:
+			j = 0
+			dpart = ''
+
+			while j < self.BYTES_PER_LINE and i < data_size:
+				dpart += '\\x%.2X' % int(ord(data[i]))
+				j+=1
+				i+=1
+
+			self._safe_write('\necho -ne "%s" >> %s\n' % (dpart, filename))
+
+			# Show upload status
+			self.progress(i, data_size)
+
+		return i
+
+	def _safe_write(self, data):
+		self.fp.write(data)
+		if data.endswith('\n'):
+			# Have to give the target system time for disk/flash I/O
+			time.sleep(self.IO_TIME)
+
+	def close(self):
+		self.fp.close()
+
+class SerialTerminal(RemoteExecute):
+
+	def __init__(self, port=None, baudrate=None):
+		self.serial = serial.Serial(port=port, baudrate=baudrate)
+		self.serial.open()
+		RemoteExecute.__init__(self, fp=self.serial, progress=True)
+
+
+
+
+
+
+
+def usage():
+	print '\nUsage: %s [OPTIONS]\n' % sys.argv[0]
+	print '\t-g, --get                              Get a file from the remote system'
+	print '\t-p, --put                              Put a file to the remote system'
+	print '\t-s, --source=<file path>               Path to source file'
+	print '\t-d, --destination=<file path>          Path to destination file'
+	print '\t-m, --minicom=<name>                   Name of the minicom config file to use'
+	print '\t-y, --port=<serial port>               Serial port to use [/dev/ttyUSB0]'
+	print '\t-b, --baudrate=<baud>                  Serial port baud rate [115200]'
+	print '\t-t, --time=<seconds>                   Time to wait between echo commands [0.1]'
+	print '\t-h, --help                             Show help'
+	print ''
+	sys.exit(1)
+
+def main():
+
+	port = '/dev/ttyUSB0'
+	baudrate = 115200
+	time = None
+	source = None
+	action = None
+	minicom = None
+	destination = None
+
+	try:
+		opts, args = GetOpt(sys.argv[1:],'y:b:s:d:t:m:gph', ['port=', 'baudrate=', 'source=', 'destination=', 'time=', 'minicom', 'get', 'put', 'help'])
+	except GetoptError, e:
+		print 'Usage error:', e
+		usage()
+
+	for opt, arg in opts:
+		if opt in ('-y', '--port'):
+			port = arg
+		elif opt in ('-b', '--baudrate'):
+			baudrate = arg
+		elif opt in ('-s', '--source'):
+			source = arg
+		elif opt in ('-d', '--destination'):
+			destination = arg
+		elif opt in ('-t', '--time'):
+			time = arg
+		elif opt in ('-m', '--minicom'):
+			minicom = ParseMinicom(arg)
+		elif opt in ('-p', '--put'):
+			action = 'put'
+		elif opt in ('-g', '--get'):
+			action = 'get'
+		elif opt in ('-h', '--help'):
+			usage()
+
+	if action is None:
+		print 'Usage error: must specify either -g or -p options'
+		usage()
+
+	if not source:
+		print 'Usage error: must specify the -s option'
+		usage()
+
+	if destination is None or destination == ".":
+		destination = os.path.basename(source)
+
+	if minicom is not None:
+		port = minicom.port()
+		baudrate = minicom.baudrate()
+
+	sterm = SerialTerminal(port=port, baudrate=baudrate)
+
+	if action == 'put':
+		try:
+			size = sterm.putfile(open(source, "rb").read(), destination)
+		
+			print '\nUploaded %d bytes from %s to %s' % (size, source, destination)
+		except Exception, e:
+			print "ERROR:", e
+	else:
+		try:
+			data = sterm.getfile(source)
+			if len(data):
+				open(destination, "rb").write(data)
+
+			print '\nDownloaded %d bytes from %s to %s' % (len(data), source, destination)
+		except Exception, e:
+			print "ERROR:", e
+			
+	sterm.close()
+
+
+
+if __name__ == '__main__':
+	main()
+
