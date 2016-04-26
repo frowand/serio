@@ -1,4 +1,19 @@
-                    GNU GENERAL PUBLIC LICENSE
+
+The only valid version of the GPL as far as this project is concerned is
+the specific version of the license (v2, not any later version) unless
+explicitly stated otherwise.
+
+The file 'serio' was originally licensed under the MIT License (see
+LICENSE_original).  The initial version of 'serio', in this repository,
+is still available under the terms of the MIT License.  Any further
+changes are available under the terms of the GNU General Public
+License Version 2.
+
+Frank Rowand
+
+-------------------------------------------------------------------------------
+
+		    GNU GENERAL PUBLIC LICENSE
                        Version 2, June 1991
 
  Copyright (C) 1989, 1991 Free Software Foundation, Inc., <http://fsf.org/>
