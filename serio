@@ -6,6 +6,8 @@
 # Copyright (C) 2011, 2012 heffnercj, cheffnera
 #    https://code.google.com/archive/p/serio/source/default/commits
 #
+# Copyright (C) 2016 Frank Rowand
+#
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2 of the License, or
@@ -176,15 +178,15 @@ class SerialTerminal(RemoteExecute):
 
 def usage():
 	print '\nUsage: %s [OPTIONS]\n' % sys.argv[0]
-	print '\t-g, --get                              Get a file from the remote system'
-	print '\t-p, --put                              Put a file to the remote system'
-	print '\t-s, --source=<file path>               Path to source file'
-	print '\t-d, --destination=<file path>          Path to destination file'
-	print '\t-m, --minicom=<name>                   Name of the minicom config file to use'
-	print '\t-y, --port=<serial port>               Serial port to use [/dev/ttyUSB0]'
-	print '\t-b, --baudrate=<baud>                  Serial port baud rate [115200]'
-	print '\t-t, --time=<seconds>                   Time to wait between echo commands [0.1]'
-	print '\t-h, --help                             Show help'
+	print '   -g, --get                       Get a file from the remote system'
+	print '   -p, --put                       Put a file to the remote system'
+	print '   -s, --source=<file path>        Path to source file'
+	print '   -d, --destination=<file path>   Path to destination file'
+	print '   -m, --minicom=<name>            Name of the minicom config file to use'
+	print '   -y, --port=<serial port>        Serial port to use [/dev/ttyUSB0]'
+	print '   -b, --baudrate=<baud>           Serial port baud rate [115200]'
+	print '   -t, --time=<seconds>            Time to wait between echo commands [0.1]'
+	print '   -h, --help                      Show help'
 	print ''
 	sys.exit(1)
 
