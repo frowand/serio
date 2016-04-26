@@ -77,7 +77,10 @@ class RemoteExecute:
 				current = total
 
 		if self.last_size == 0 or current == total or (current - self.last_size) >= self.PRINT_INTERVAL:
-			percent = (current / float(total)) * 100
+			if total == 0:
+				percent = 1
+			else:
+				percent = (current / float(total)) * 100
 			marks = int(math.floor(percent / 2))
 			markstring = "#" * marks
 			dotstring = "." * (50 - marks)
