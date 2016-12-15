@@ -57,7 +57,7 @@ class ParseMinicom:
 class RemoteExecute:
 
 	DELIM = "THIS IS THE END, BEAUTIFUL FRIEND"
-	BYTES_PER_LINE = 20
+	DATA_PER_WRITE = 100
 	PRINT_INTERVAL = 256
 
 	def __init__(self, fp, progress=True, io_time=None):
@@ -138,16 +138,25 @@ class RemoteExecute:
                 # Create/zero the file
                 self._safe_write('\necho -ne > %s\n' % filename)
 
-		# Loop through all the bytes in the source data and append them to
-		# the destination file BYTES_PER_LINE bytes at a time
+		# Loop through all the bytes in the source data and append them
+		# to the destination file.  Limit size of data in the echo
+		# command to DATA_PER_WRITE characters.
 		while i < data_size:
 			j = 0
 			dpart = ''
 
-			while j < self.BYTES_PER_LINE and i < data_size:
-				dpart += '\\x%.2X' % int(ord(data[i]))
-				j+=1
-				i+=1
+			while j < self.DATA_PER_WRITE and i < data_size:
+				data_i = data[i]
+				odata = ord(data_i)
+				if 'a' <= data_i <= 'z' or 'A' <= data_i <= 'Z' or '0' <= data_i <= '9':
+					dpart += data_i
+					j += 1
+				else:
+					if j + 5 > self.DATA_PER_WRITE:
+						break
+					dpart += '\\x%.2X' % int(odata)
+					j += 5
+				i += 1
 
 			self._safe_write('\necho -ne "%s" >> %s\n' % (dpart, filename))
 
@@ -275,8 +284,8 @@ def main():
 
 	if action == 'put':
 		try:
-			term = open(source, "rb")
-			size = sterm.putfile(term.read(), destination)
+			host_file = open(source, "rb")
+			size = sterm.putfile(host_file.read(), destination)
 		
 			print '\nUploaded %d bytes from %s to %s' % (size, source, destination)
 		except Exception, e:
