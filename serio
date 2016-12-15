@@ -189,11 +189,15 @@ def usage():
 	print '   -h, --help                      Show help'
 	print '   -p, --put                       Put a file to the remote system'
 	print '   -m, --minicom=<name>            Name of the minicom config file to use'
+	print '   -P, --paranoid                  Assume target is fragile, be conservative'
 	print '   -s, --source=<file path>        Path to source file'
-	print '   -t, --time=<seconds>            Time to wait between echo commands [0.1]'
+	print '   -t, --time=<seconds>            Time to wait between echo commands [', paranoid_time, ' if -P]'
 	print '   -y, --port=<serial port>        Serial port to use [/dev/ttyUSB0]'
 	print ''
 	sys.exit(1)
+
+
+paranoid_time = 0.1
 
 def main():
 
@@ -201,13 +205,14 @@ def main():
 	baudrate = 115200
 	destination = None
 	minicom = None
+	paranoid = None
 	port = '/dev/ttyUSB0'
 	source = None
 	io_time = None
 
 	try:
 		opts, args = GetOpt(sys.argv[1:],
-				    'b:d:ghm:ps:t:y:',
+				    'b:d:ghm:pPs:t:y:',
 				    [
 				     'baudrate=',
 				     'destination=',
@@ -215,6 +220,7 @@ def main():
 				     'help'
 				     'minicom=',
 				     'put',
+				     'paranoid',
 				     'source=',
 				     'time=',
 				     'port=',
@@ -237,12 +243,18 @@ def main():
 			minicom = ParseMinicom(arg)
 		elif opt in ('-p', '--put'):
 			action = 'put'
+		elif opt in ('-P', '--paranoid'):
+			paranoid = 1
 		elif opt in ('-s', '--source'):
 			source = arg
 		elif opt in ('-t', '--time'):
 			io_time = float(arg)
 		elif opt in ('-y', '--port'):
 			port = arg
+
+	if paranoid:
+		if io_time is None:
+			io_time = paranoid_time
 
 	if action is None:
 		print 'Usage error: must specify either -g or -p options'
