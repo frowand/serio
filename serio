@@ -57,16 +57,16 @@ class ParseMinicom:
 class RemoteExecute:
 
 	DELIM = "THIS IS THE END, BEAUTIFUL FRIEND"
-	IO_TIME = .1
 	BYTES_PER_LINE = 20
 	PRINT_INTERVAL = 256
 
-	def __init__(self, fp, progress=True):
+	def __init__(self, fp, progress=True, io_time=None):
 		if callable(fp.read) and callable(fp.write) and callable(fp.readline) and callable (fp.readlines):
 			self.fp = fp
 			self.current = 0
 			self.showprogress = progress
 			self.last_size = 0
+			self.IO_TIME = io_time
 		else:
 			raise Exception("bad fp object!")
 
@@ -159,20 +159,21 @@ class RemoteExecute:
 	def _safe_write(self, data):
 		self.fp.write(data)
 		if data.endswith('\n'):
-			# Have to give the target system time for disk/flash I/O
-			time.sleep(self.IO_TIME)
+			# give the target system time for disk/flash I/O
+			if self.IO_TIME is not None:
+				time.sleep(self.IO_TIME)
 
 	def close(self):
 		self.fp.close()
 
 class SerialTerminal(RemoteExecute):
 
-	def __init__(self, port=None, baudrate=None):
+	def __init__(self, port=None, baudrate=None, io_time=None):
 		self.serial = serial.Serial(port=port, baudrate=baudrate)
 		already_open = self.serial.isOpen()
 		if not already_open:
 			self.serial.open()
-		RemoteExecute.__init__(self, fp=self.serial, progress=True)
+		RemoteExecute.__init__(self, fp=self.serial, progress=True, io_time=io_time)
 
 
 
@@ -182,53 +183,66 @@ class SerialTerminal(RemoteExecute):
 
 def usage():
 	print '\nUsage: %s [OPTIONS]\n' % sys.argv[0]
-	print '   -g, --get                       Get a file from the remote system'
-	print '   -p, --put                       Put a file to the remote system'
-	print '   -s, --source=<file path>        Path to source file'
-	print '   -d, --destination=<file path>   Path to destination file'
-	print '   -m, --minicom=<name>            Name of the minicom config file to use'
-	print '   -y, --port=<serial port>        Serial port to use [/dev/ttyUSB0]'
 	print '   -b, --baudrate=<baud>           Serial port baud rate [115200]'
-	print '   -t, --time=<seconds>            Time to wait between echo commands [0.1]'
+	print '   -d, --destination=<file path>   Path to destination file'
+	print '   -g, --get                       Get a file from the remote system'
 	print '   -h, --help                      Show help'
+	print '   -p, --put                       Put a file to the remote system'
+	print '   -m, --minicom=<name>            Name of the minicom config file to use'
+	print '   -s, --source=<file path>        Path to source file'
+	print '   -t, --time=<seconds>            Time to wait between echo commands [0.1]'
+	print '   -y, --port=<serial port>        Serial port to use [/dev/ttyUSB0]'
 	print ''
 	sys.exit(1)
 
 def main():
 
-	port = '/dev/ttyUSB0'
-	baudrate = 115200
-	time = None
-	source = None
 	action = None
-	minicom = None
+	baudrate = 115200
 	destination = None
+	minicom = None
+	port = '/dev/ttyUSB0'
+	source = None
+	io_time = None
 
 	try:
-		opts, args = GetOpt(sys.argv[1:],'y:b:s:d:t:m:gph', ['port=', 'baudrate=', 'source=', 'destination=', 'time=', 'minicom', 'get', 'put', 'help'])
+		opts, args = GetOpt(sys.argv[1:],
+				    'b:d:ghm:ps:t:y:',
+				    [
+				     'baudrate=',
+				     'destination=',
+				     'get',
+				     'help'
+				     'minicom=',
+				     'put',
+				     'source=',
+				     'time=',
+				     'port=',
+				    ]
+				   )
 	except GetoptError, e:
 		print 'Usage error:', e
 		usage()
 
 	for opt, arg in opts:
-		if opt in ('-y', '--port'):
-			port = arg
-		elif opt in ('-b', '--baudrate'):
+		if opt in ('-b', '--baudrate'):
 			baudrate = arg
-		elif opt in ('-s', '--source'):
-			source = arg
 		elif opt in ('-d', '--destination'):
 			destination = arg
-		elif opt in ('-t', '--time'):
-			time = arg
-		elif opt in ('-m', '--minicom'):
-			minicom = ParseMinicom(arg)
-		elif opt in ('-p', '--put'):
-			action = 'put'
 		elif opt in ('-g', '--get'):
 			action = 'get'
 		elif opt in ('-h', '--help'):
 			usage()
+		elif opt in ('-m', '--minicom'):
+			minicom = ParseMinicom(arg)
+		elif opt in ('-p', '--put'):
+			action = 'put'
+		elif opt in ('-s', '--source'):
+			source = arg
+		elif opt in ('-t', '--time'):
+			io_time = float(arg)
+		elif opt in ('-y', '--port'):
+			port = arg
 
 	if action is None:
 		print 'Usage error: must specify either -g or -p options'
@@ -245,11 +259,12 @@ def main():
 		port = minicom.port()
 		baudrate = minicom.baudrate()
 
-	sterm = SerialTerminal(port=port, baudrate=baudrate)
+	sterm = SerialTerminal(port=port, baudrate=baudrate, io_time=io_time)
 
 	if action == 'put':
 		try:
-			size = sterm.putfile(open(source, "rb").read(), destination)
+			term = open(source, "rb")
+			size = sterm.putfile(term.read(), destination)
 		
 			print '\nUploaded %d bytes from %s to %s' % (size, source, destination)
 		except Exception, e:
