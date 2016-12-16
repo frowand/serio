@@ -26,6 +26,9 @@
 
 import serial
 import sys, os.path, math, time
+import hashlib
+import StringIO
+import uu
 from getopt import GetoptError, getopt as GetOpt
 
 class ParseMinicom:
@@ -122,13 +125,32 @@ class RemoteExecute:
 		self.fp.readline()
 
 	def getfile(self, filename):
-		self.execute("cat '%s' && echo '%s'" % (filename, self.DELIM))
-		data = self.readuntil(delim=self.DELIM)
+		self.execute("stat -c %%s '%s'" % (filename))
+		data = self.fp.readline()
+		file_size = int(data)
 
-		# Catting data over a terminal turns all \n's to \r\n's
-		data = data.replace("\r\n", "\n")
+		self.execute("md5sum '%s'" % (filename))
+		md5sum = self.fp.readline()
 
-		return data
+		self.execute("uuencode '%s' /dev/stdout" % (filename))
+		data = self.readuntil(delim="end")
+
+		self.mode = data[6:9]
+
+		infile = StringIO.StringIO(data + "end")
+		outfile = StringIO.StringIO()
+		uu.decode(infile,outfile)
+
+		if hashlib.md5(outfile.getvalue()).hexdigest() != md5sum[0:32]:
+			raise Exception("md5sum of dest != source")
+
+		if len(outfile.getvalue()) != file_size:
+			raise Exception("size of dest != source")
+
+		return outfile.getvalue()
+
+
+
 
 	def putfile(self, data, filename):
                 i = 0
@@ -202,6 +224,12 @@ def usage():
 	print '   -s, --source=<file path>        Path to source file'
 	print '   -t, --time=<seconds>            Time to wait between echo commands [', paranoid_time, ' if -P]'
 	print '   -y, --port=<serial port>        Serial port to use [/dev/ttyUSB0]'
+	print ''
+	print 'Return:'
+	print '  0  no error'
+	print '  1  --help or argument error'
+	print '  2  --put error'
+	print '  3  --get error'
 	print ''
 	sys.exit(1)
 
@@ -290,15 +318,19 @@ def main():
 			print '\nUploaded %d bytes from %s to %s' % (size, source, destination)
 		except Exception, e:
 			print "ERROR:", e
+			sys.exit(2)
 	else:
 		try:
 			data = sterm.getfile(source)
+			mode = int(sterm.mode, 8)
 			if len(data):
 				open(destination, "wb").write(data)
+				os.chmod(destination, mode)
 
 			print '\nDownloaded %d bytes from %s to %s' % (len(data), source, destination)
 		except Exception, e:
-			print "ERROR:", e
+			print "\nERROR:", e
+			sys.exit(3)
 			
 	sterm.close()
 
