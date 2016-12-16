@@ -72,10 +72,11 @@ class RemoteExecute:
 
 	def progress(self, current, total):
 		
-		if self.showprogress:
-        
-			if current > total:
-				current = total
+		if not self.showprogress:
+			return
+
+		if current > total:
+			current = total
 
 		if self.last_size == 0 or current == total or (current - self.last_size) >= self.PRINT_INTERVAL:
 			if total == 0:
