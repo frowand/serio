@@ -116,11 +116,10 @@ class RemoteExecute:
 		self.progress(len(data), len(data))
 		return data
 
-	def execute(self, cmd, count=None, lines=None, delim=None):
+	def execute(self, cmd):
 		self.fp.write(cmd + "\n")
+		# target shell echos command, slurp it up
 		self.fp.readline()
-
-		return self.readuntil(count, lines, delim)
 
 	def getfile(self, filename):
 		self.execute("cat '%s' && echo '%s'" % (filename, self.DELIM))
