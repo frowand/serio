@@ -191,7 +191,7 @@ class SerialTerminal(RemoteExecute):
 
 
 def usage():
-	print '\nUsage: %s [OPTIONS]\n' % sys.argv[0]
+	print '\nUsage: %s [OPTIONS]\n' % os.path.basename(sys.argv[0])
 	print '   -b, --baudrate=<baud>           Serial port baud rate [115200]'
 	print '   -d, --destination=<file path>   Path to destination file'
 	print '   -g, --get                       Get a file from the remote system'
