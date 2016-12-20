@@ -31,6 +31,11 @@ import StringIO
 import uu
 from getopt import GetoptError, getopt as GetOpt
 
+# verbose
+#  1  bytes uploaded/downloaded
+#  2  progress
+verbose = 0
+
 class ParseMinicom:
 
 	PATH = "/etc/minicom/"
@@ -63,11 +68,12 @@ class RemoteExecute:
 	DATA_PER_WRITE = 100
 	PRINT_INTERVAL = 256
 
-	def __init__(self, fp, progress=True, io_time=None):
+	def __init__(self, fp, io_time=None):
+		global verbose
 		if callable(fp.read) and callable(fp.write) and callable(fp.readline) and callable (fp.readlines):
 			self.fp = fp
 			self.current = 0
-			self.showprogress = progress
+			self.showprogress = verbose > 1
 			self.last_size = 0
 			self.IO_TIME = io_time
 		else:
@@ -117,6 +123,8 @@ class RemoteExecute:
 			data = data[0:-len(delim)]
 	
 		self.progress(len(data), len(data))
+		if self.showprogress > 0:
+			print
 		return data
 
 	def execute(self, cmd):
@@ -185,6 +193,8 @@ class RemoteExecute:
 			# Show upload status
 			self.progress(i, data_size)
 
+		if self.showprogress:
+			print
 		return i
 
 	def _safe_write(self, data):
@@ -204,7 +214,7 @@ class SerialTerminal(RemoteExecute):
 		already_open = self.serial.isOpen()
 		if not already_open:
 			self.serial.open()
-		RemoteExecute.__init__(self, fp=self.serial, progress=True, io_time=io_time)
+		RemoteExecute.__init__(self, fp=self.serial, io_time=io_time)
 
 
 
@@ -223,6 +233,7 @@ def usage():
 	print '   -P, --paranoid                  Assume target is fragile, be conservative'
 	print '   -s, --source=<file path>        Path to source file'
 	print '   -t, --time=<seconds>            Time to wait between echo commands [', paranoid_time, ' if -P]'
+	print '   -v, --verbose                   Print more information (cumulative)'
 	print '   -y, --port=<serial port>        Serial port to use [/dev/ttyUSB0]'
 	print ''
 	print 'Return:'
@@ -238,18 +249,20 @@ paranoid_time = 0.1
 
 def main():
 
+	global verbose
+
 	action = None
 	baudrate = 115200
 	destination = None
+	io_time = None
 	minicom = None
 	paranoid = None
 	port = '/dev/ttyUSB0'
 	source = None
-	io_time = None
 
 	try:
 		opts, args = GetOpt(sys.argv[1:],
-				    'b:d:ghm:pPs:t:y:',
+				    'b:d:ghm:pPs:t:vy:',
 				    [
 				     'baudrate=',
 				     'destination=',
@@ -260,6 +273,7 @@ def main():
 				     'paranoid',
 				     'source=',
 				     'time=',
+				     'verbose',
 				     'port=',
 				    ]
 				   )
@@ -286,6 +300,8 @@ def main():
 			source = arg
 		elif opt in ('-t', '--time'):
 			io_time = float(arg)
+		elif opt in ('-v', '--verbose'):
+			verbose += 1
 		elif opt in ('-y', '--port'):
 			port = arg
 
@@ -315,7 +331,8 @@ def main():
 			host_file = open(source, "rb")
 			size = sterm.putfile(host_file.read(), destination)
 		
-			print '\nUploaded %d bytes from %s to %s' % (size, source, destination)
+			if verbose > 0:
+				print 'Uploaded %d bytes from %s to %s' % (size, source, destination)
 		except Exception, e:
 			print "ERROR:", e
 			sys.exit(2)
@@ -326,7 +343,8 @@ def main():
 				open(destination, "wb").write(data)
 				os.chmod(destination, mode)
 
-			print '\nDownloaded %d bytes from %s to %s' % (len(data), source, destination)
+			if verbose > 0:
+				print 'Downloaded %d bytes from %s to %s' % (len(data), source, destination)
 		except Exception, e:
 			print "\nERROR:", e
 			sys.exit(3)
