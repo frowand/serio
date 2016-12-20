@@ -135,7 +135,7 @@ class RemoteExecute:
 		self.execute("uuencode '%s' /dev/stdout" % (filename))
 		data = self.readuntil(delim="end")
 
-		self.mode = data[6:9]
+		mode = int(data[6:9], 8)
 
 		infile = StringIO.StringIO(data + "end")
 		outfile = StringIO.StringIO()
@@ -147,7 +147,7 @@ class RemoteExecute:
 		if len(outfile.getvalue()) != file_size:
 			raise Exception("size of dest != source")
 
-		return outfile.getvalue()
+		return mode, outfile.getvalue()
 
 
 
@@ -321,8 +321,7 @@ def main():
 			sys.exit(2)
 	else:
 		try:
-			data = sterm.getfile(source)
-			mode = int(sterm.mode, 8)
+			mode, data = sterm.getfile(source)
 			if len(data):
 				open(destination, "wb").write(data)
 				os.chmod(destination, mode)
