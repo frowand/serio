@@ -133,29 +133,40 @@ class RemoteExecute:
 		self.fp.readline()
 
 	def getfile(self, filename):
-		self.execute("stat -c %%s '%s'" % (filename))
-		data = self.fp.readline()
-		file_size = int(data)
+		if self.basic:
+			self.execute("cat '%s' && echo '%s'" % (filename, self.DELIM))
+			data = self.readuntil(delim=self.DELIM)
 
-		self.execute("md5sum '%s'" % (filename))
-		md5sum = self.fp.readline()
+			# Catting data over a terminal turns all \n's to \r\n's
+			data = data.replace("\r\n", "\n")
 
-		self.execute("uuencode '%s' /dev/stdout" % (filename))
-		data = self.readuntil(delim="end")
+			mode = -1
+			return mode, data
 
-		mode = int(data[6:9], 8)
+		else:
+			self.execute("stat -c %%s '%s'" % (filename))
+			data = self.fp.readline()
+			file_size = int(data)
 
-		infile = StringIO.StringIO(data + "end")
-		outfile = StringIO.StringIO()
-		uu.decode(infile,outfile)
+			self.execute("md5sum '%s'" % (filename))
+			md5sum = self.fp.readline()
 
-		if hashlib.md5(outfile.getvalue()).hexdigest() != md5sum[0:32]:
-			raise Exception("md5sum of dest != source")
+			self.execute("uuencode '%s' /dev/stdout" % (filename))
+			data = self.readuntil(delim="end")
 
-		if len(outfile.getvalue()) != file_size:
-			raise Exception("size of dest != source")
+			mode = int(data[6:9], 8)
 
-		return mode, outfile.getvalue()
+			infile = StringIO.StringIO(data + "end")
+			outfile = StringIO.StringIO()
+			uu.decode(infile,outfile)
+
+			if hashlib.md5(outfile.getvalue()).hexdigest() != md5sum[0:32]:
+				raise Exception("md5sum of dest != source")
+
+			if len(outfile.getvalue()) != file_size:
+				raise Exception("size of dest != source")
+
+			return mode, outfile.getvalue()
 
 
 
@@ -209,7 +220,8 @@ class RemoteExecute:
 
 class SerialTerminal(RemoteExecute):
 
-	def __init__(self, port=None, baudrate=None, io_time=None):
+	def __init__(self, basic, port, baudrate, io_time):
+		self.basic = basic
 		self.serial = serial.Serial(port=port, baudrate=baudrate)
 		already_open = self.serial.isOpen()
 		if not already_open:
@@ -225,6 +237,7 @@ class SerialTerminal(RemoteExecute):
 def usage():
 	print '\nUsage: %s [OPTIONS]\n' % os.path.basename(sys.argv[0])
 	print '   -b, --baudrate=<baud>           Serial port baud rate [115200]'
+	print '   -B, --basic                     Use basic (minimal) target commands'
 	print '   -d, --destination=<file path>   Path to destination file'
 	print '   -g, --get                       Get a file from the remote system'
 	print '   -h, --help                      Show help'
@@ -252,6 +265,7 @@ def main():
 	global verbose
 
 	action = None
+	basic = None
 	baudrate = 115200
 	destination = None
 	io_time = None
@@ -262,9 +276,10 @@ def main():
 
 	try:
 		opts, args = GetOpt(sys.argv[1:],
-				    'b:d:ghm:pPs:t:vy:',
+				    'b:Bd:ghm:pPs:t:vy:',
 				    [
 				     'baudrate=',
+				     'basic',
 				     'destination=',
 				     'get',
 				     'help'
@@ -284,6 +299,8 @@ def main():
 	for opt, arg in opts:
 		if opt in ('-b', '--baudrate'):
 			baudrate = arg
+		elif opt in ('-B', '--basic'):
+			basic = 1
 		elif opt in ('-d', '--destination'):
 			destination = arg
 		elif opt in ('-g', '--get'):
@@ -324,7 +341,7 @@ def main():
 		port = minicom.port()
 		baudrate = minicom.baudrate()
 
-	sterm = SerialTerminal(port=port, baudrate=baudrate, io_time=io_time)
+	sterm = SerialTerminal(basic, port, baudrate, io_time)
 
 	if action == 'put':
 		try:
@@ -336,12 +353,14 @@ def main():
 		except Exception, e:
 			print "ERROR:", e
 			sys.exit(2)
-	else:
+
+	elif action == 'get':
 		try:
 			mode, data = sterm.getfile(source)
 			if len(data):
 				open(destination, "wb").write(data)
-				os.chmod(destination, mode)
+				if mode != -1:
+					os.chmod(destination, mode)
 
 			if verbose > 0:
 				print 'Downloaded %d bytes from %s to %s' % (len(data), source, destination)
