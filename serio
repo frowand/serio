@@ -36,6 +36,10 @@ from getopt import GetoptError, getopt as GetOpt
 #  2  progress
 verbose = 0
 
+# zero always will mean no checksum
+CHECKSUM_NONE   = 0
+CHECKSUM_MD5SUM = 1
+
 class ParseMinicom:
 
 	PATH = "/etc/minicom/"
@@ -144,12 +148,14 @@ class RemoteExecute:
 			return mode, data
 
 		else:
-			self.execute("stat -c %%s '%s'" % (filename))
-			data = self.fp.readline()
-			file_size = int(data)
+			if self.checksum == CHECKSUM_MD5SUM:
 
-			self.execute("md5sum '%s'" % (filename))
-			md5sum = self.fp.readline()
+				self.execute("stat -c %%s '%s'" % (filename))
+				data = self.fp.readline()
+				file_size = int(data)
+
+				self.execute("md5sum '%s'" % (filename))
+				md5sum = self.fp.readline()
 
 			self.execute("uuencode '%s' /dev/stdout" % (filename))
 			data = self.readuntil(delim="end")
@@ -160,11 +166,12 @@ class RemoteExecute:
 			outfile = StringIO.StringIO()
 			uu.decode(infile,outfile)
 
-			if hashlib.md5(outfile.getvalue()).hexdigest() != md5sum[0:32]:
-				raise Exception("md5sum of dest != source")
+			if self.checksum == CHECKSUM_MD5SUM:
+				if hashlib.md5(outfile.getvalue()).hexdigest() != md5sum[0:32]:
+					raise Exception("md5sum of dest != source")
 
-			if len(outfile.getvalue()) != file_size:
-				raise Exception("size of dest != source")
+				if len(outfile.getvalue()) != file_size:
+					raise Exception("size of dest != source")
 
 			return mode, outfile.getvalue()
 
@@ -235,8 +242,9 @@ class RemoteExecute:
 
 class SerialTerminal(RemoteExecute):
 
-	def __init__(self, basic, port, baudrate, io_time):
+	def __init__(self, basic, checksum, port, baudrate, io_time):
 		self.basic = basic
+		self.checksum = checksum
 		self.serial = serial.Serial(port=port, baudrate=baudrate)
 		already_open = self.serial.isOpen()
 		if not already_open:
@@ -257,6 +265,7 @@ def usage():
 	print '   -g, --get                       Get a file from the remote system'
 	print '   -h, --help                      Show help'
 	print '   -p, --put                       Put a file to the remote system'
+	print '   -M, --md5sum                    verify file transfer with md5sum'
 	print '   -m, --minicom=<name>            Name of the minicom config file to use'
 	print '   -P, --paranoid                  Assume target is fragile, be conservative'
 	print '   -s, --source=<file path>        Path to source file'
@@ -288,6 +297,7 @@ def main():
 	action = None
 	basic = None
 	baudrate = 115200
+	checksum = CHECKSUM_NONE
 	destination = None
 	io_time = None
 	minicom = None
@@ -297,13 +307,14 @@ def main():
 
 	try:
 		opts, args = GetOpt(sys.argv[1:],
-				    'b:Bd:ghm:pPs:t:vy:',
+				    'b:Bd:ghMm:pPs:t:vy:',
 				    [
 				     'baudrate=',
 				     'basic',
 				     'destination=',
 				     'get',
 				     'help'
+				     'md5sum',
 				     'minicom=',
 				     'put',
 				     'paranoid',
@@ -328,6 +339,8 @@ def main():
 			action = 'get'
 		elif opt in ('-h', '--help'):
 			usage()
+		elif opt in ('-M', '--md5sum'):
+			checksum = CHECKSUM_MD5SUM
 		elif opt in ('-m', '--minicom'):
 			minicom = ParseMinicom(arg)
 		elif opt in ('-p', '--put'):
@@ -362,7 +375,7 @@ def main():
 		port = minicom.port()
 		baudrate = minicom.baudrate()
 
-	sterm = SerialTerminal(basic, port, baudrate, io_time)
+	sterm = SerialTerminal(basic, checksum, port, baudrate, io_time)
 
 	if action == 'put':
 		try:
