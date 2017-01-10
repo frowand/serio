@@ -68,18 +68,18 @@ class ParseMinicom:
 
 class RemoteExecute:
 
-	DELIM = "THIS IS THE END, BEAUTIFUL FRIEND"
+	DELIM          = "THIS IS THE END, BEAUTIFUL FRIEND"
 	DATA_PER_WRITE = 100
 	PRINT_INTERVAL = 256
 
 	def __init__(self, fp, io_time=None):
 		global verbose
 		if callable(fp.read) and callable(fp.write) and callable(fp.readline) and callable (fp.readlines):
-			self.fp = fp
-			self.current = 0
+			self.fp           = fp
+			self.current      = 0
 			self.showprogress = verbose > 1
-			self.last_size = 0
-			self.IO_TIME = io_time
+			self.last_size    = 0
+			self.IO_TIME      = io_time
 		else:
 			raise Exception("bad fp object!")
 
@@ -96,9 +96,9 @@ class RemoteExecute:
 				percent = 1
 			else:
 				percent = (current / float(total)) * 100
-			marks = int(math.floor(percent / 2))
+			marks      = int(math.floor(percent / 2))
 			markstring = "#" * marks
-			dotstring = "." * (50 - marks)
+			dotstring  = "." * (50 - marks)
 			sys.stdout.write("\r[%s%s] %0.2f%% (%d / %d)" % (markstring, dotstring, percent, current, total))
 			sys.stdout.flush()
 			self.last_size = current
@@ -158,11 +158,11 @@ class RemoteExecute:
 				md5sum = self.fp.readline()
 
 			self.execute("uuencode '%s' /dev/stdout" % (filename))
-			data = self.readuntil(delim="end")
+			data    = self.readuntil(delim="end")
 
-			mode = int(data[6:9], 8)
+			mode    = int(data[6:9], 8)
 
-			infile = StringIO.StringIO(data + "end")
+			infile  = StringIO.StringIO(data + "end")
 			outfile = StringIO.StringIO()
 			uu.decode(infile,outfile)
 
@@ -179,8 +179,8 @@ class RemoteExecute:
 
 
 	def putfile(self, data, filename):
-		i = 0
-		j = 0
+		i         = 0
+		j         = 0
 		data_size = len(data)
 
 		# try to ensure at shell prompt
@@ -243,10 +243,10 @@ class RemoteExecute:
 class SerialTerminal(RemoteExecute):
 
 	def __init__(self, basic, checksum, port, baudrate, io_time):
-		self.basic = basic
+		self.basic    = basic
 		self.checksum = checksum
-		self.serial = serial.Serial(port=port, baudrate=baudrate)
-		already_open = self.serial.isOpen()
+		self.serial   = serial.Serial(port=port, baudrate=baudrate)
+		already_open  = self.serial.isOpen()
 		if not already_open:
 			self.serial.open()
 		RemoteExecute.__init__(self, fp=self.serial, io_time=io_time)
@@ -294,16 +294,16 @@ def main():
 
 	global verbose
 
-	action = None
-	basic = None
-	baudrate = 115200
-	checksum = CHECKSUM_NONE
+	action      = None
+	basic       = None
+	baudrate    = 115200
+	checksum    = CHECKSUM_NONE
 	destination = None
-	io_time = None
-	minicom = None
-	paranoid = None
-	port = '/dev/ttyUSB0'
-	source = None
+	io_time     = None
+	minicom     = None
+	paranoid    = None
+	port        = '/dev/ttyUSB0'
+	source      = None
 
 	try:
 		opts, args = GetOpt(sys.argv[1:],
@@ -372,7 +372,7 @@ def main():
 		destination = os.path.basename(source)
 
 	if minicom is not None:
-		port = minicom.port()
+		port     = minicom.port()
 		baudrate = minicom.baudrate()
 
 	sterm = SerialTerminal(basic, checksum, port, baudrate, io_time)
