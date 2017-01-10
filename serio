@@ -172,12 +172,23 @@ class RemoteExecute:
 
 
 	def putfile(self, data, filename):
-                i = 0
-                j = 0
-                data_size = len(data)
+		i = 0
+		j = 0
+		data_size = len(data)
 
-                # Create/zero the file
-                self._safe_write('\necho -ne > %s\n' % filename)
+		# try to ensure at shell prompt
+		self._safe_write('\n')
+
+		# disable shell echo
+		# Otherwise shell echos from a large --put may still be in
+		# progress when putfile() returns.  Even with disabled echo,
+		# target will send a shell prompt each time it receives a
+		# newline, so this does not eliminate all traffic from the
+		# target, it just reduces it.
+		self._safe_write('stty -echo\n')
+
+		# Create/zero the file
+		self._safe_write('echo -ne > %s\n' % filename)
 
 		# Loop through all the bytes in the source data and append them
 		# to the destination file.  Limit size of data in the echo
@@ -199,13 +210,17 @@ class RemoteExecute:
 					j += 5
 				i += 1
 
-			self._safe_write('\necho -ne "%s" >> %s\n' % (dpart, filename))
+			self._safe_write('echo -ne "%s" >> %s\n' % (dpart, filename))
 
 			# Show upload status
 			self.progress(i, data_size)
 
 		if self.showprogress:
 			print
+
+		# enable shell echo
+		self._safe_write('stty echo\n')
+
 		return i
 
 	def _safe_write(self, data):
@@ -248,6 +263,12 @@ def usage():
 	print '   -t, --time=<seconds>            Time to wait between echo commands [', paranoid_time, ' if -P]'
 	print '   -v, --verbose                   Print more information (cumulative)'
 	print '   -y, --port=<serial port>        Serial port to use [/dev/ttyUSB0]'
+	print ''
+	print 'Side-effects:'
+	print '  --put'
+	print '    - shell echo will be enabled on target (stty echo)'
+	print ''
+	print ''
 	print ''
 	print 'Return:'
 	print '  0  no error'
