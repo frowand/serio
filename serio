@@ -24,6 +24,7 @@
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 
+import re
 import serial
 import sys, os.path, math, time
 import hashlib
@@ -132,11 +133,35 @@ class RemoteExecute:
 		return data
 
 	def execute(self, cmd):
+		# This program MUST send a newline to the target once before
+		# calling a sequence of execute() so that the data read by
+		# readline() will include a shell prompt.
+
 		self.fp.write(cmd + "\n")
+
 		# target shell echos command, slurp it up
-		self.fp.readline()
+		cmd_echo = self.fp.readline()
+
+		# WARNING: this will not work if the prompt is 0 bytes long
+		#
+		# If a command is sent to the target shell before the shell
+		# has issued a prompt then the shell will echo the command
+		# (including the newline that will cause a readline() to
+		# complete).  When the shell is ready to read the next
+		# command it will print the prompt and once again echo the
+		# command.
+		#
+		# If the echoed command does not include the prompt then
+		# repeat the readline().
+		#
+		if cmd_echo == cmd + "\r\n":
+			cmd_echo = self.fp.readline()
 
 	def getfile(self, filename):
+		# required before calls to execute()
+		self._safe_write('\n')
+		self.fp.readline()
+
 		if self.basic:
 			self.execute("cat '%s' && echo '%s'" % (filename, self.DELIM))
 			data = self.readuntil(delim=self.DELIM)
@@ -158,9 +183,27 @@ class RemoteExecute:
 				md5sum = self.fp.readline()
 
 			self.execute("uuencode '%s' /dev/stdout" % (filename))
-			data    = self.readuntil(delim="end")
+			data = self.readuntil(delim="end")
 
-			mode    = int(data[6:9], 8)
+			# be careful about format of uuencode header
+
+			match = re.search("\n", data)
+			if match:
+				full_header = data[0:match.start() - 1]
+			else:
+				full_header = data
+
+			match = re.match("begin +[0-9]*", data)
+			if match:
+				header = data[match.start():match.end()]
+				header = re.sub("^begin ", "", header, 1)
+				header = re.sub(" +.*","", header)
+				if not re.match("[0-9]+", header):
+					raise Exception("invalid uuencode header: " + full_header)
+			else:
+				raise Exception("invalid uuencode header: " + full_header)
+
+			mode = int(header, 8)
 
 			infile  = StringIO.StringIO(data + "end")
 			outfile = StringIO.StringIO()
@@ -184,7 +227,9 @@ class RemoteExecute:
 		data_size = len(data)
 
 		# try to ensure at shell prompt
+		# also, required before calls to execute()
 		self._safe_write('\n')
+		self.fp.readline()
 
 		# disable shell echo
 		# Otherwise shell echos from a large --put may still be in
@@ -269,15 +314,24 @@ def usage():
 	print '   -m, --minicom=<name>            Name of the minicom config file to use'
 	print '   -P, --paranoid                  Assume target is fragile, be conservative'
 	print '   -s, --source=<file path>        Path to source file'
-	print '   -t, --time=<seconds>            Time to wait between echo commands [', paranoid_time, ' if -P]'
+	print '   -t, --time=<seconds>            delay in _safe_write() [if -P ' + str(paranoid_time) + ' else 0]'
 	print '   -v, --verbose                   Print more information (cumulative)'
 	print '   -y, --port=<serial port>        Serial port to use [/dev/ttyUSB0]'
 	print ''
 	print 'Side-effects:'
 	print '  --put'
 	print '    - shell echo will be enabled on target (stty echo)'
+	print '    - if exception occurs, shell echo may be disabled on'
+	print '      target (target can be fixed with command "stty echo")'
 	print ''
-	print ''
+	print 'Target Dependencies:'
+	print '  - May hang if the shell prompt is zero bytes long'
+	print '  - Target shell echos \\r\\n at end of command input'
+	print '  - Target shell built-ins or programs:'
+	print '    --get --basic  :  cat, echo'
+	print '    --get          :                uuencode'
+	print '    --get --md5sum :  stat, md5sum, uuencode'
+	print '    --put          :  stty, echo'
 	print ''
 	print 'Return:'
 	print '  0  no error'
