@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# vim: set ts=8 sw=8 sts=8 noet :
 
 # upload/download files to an embedded Linux system via a serial port shell
 
@@ -464,3 +463,5 @@ def main():
 if __name__ == '__main__':
 	main()
 
+
+# ex: set ts=8 sw=8 sts=8 noet :
