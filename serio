@@ -133,23 +133,23 @@ class RemoteExecute:
 		return data
 
 	def execute(self, cmd):
-		# This program MUST send a newline to the target once before
-		# calling a sequence of execute() so that the data read by
-		# readline() will include a shell prompt.
+		# This program MUST send a newline to the remote system once
+		# before calling a sequence of execute() so that the data
+		# read by readline() will include a shell prompt.
 
 		self.fp.write(cmd + "\n")
 
-		# target shell echos command, slurp it up
+		# remote system shell echos command, slurp it up
 		cmd_echo = self.fp.readline()
 
 		# WARNING: this will not work if the prompt is 0 bytes long
 		#
-		# If a command is sent to the target shell before the shell
-		# has issued a prompt then the shell will echo the command
-		# (including the newline that will cause a readline() to
-		# complete).  When the shell is ready to read the next
-		# command it will print the prompt and once again echo the
-		# command.
+		# If a command is sent to the remote system  shell before
+		# the shell has issued a prompt then the shell will echo
+		# the command (including the newline that will cause a
+		# readline() to complete).  When the shell is ready to read
+		# the next command it will print the prompt and once again
+		# echo the command.
 		#
 		# If the echoed command does not include the prompt then
 		# repeat the readline().
@@ -232,9 +232,9 @@ class RemoteExecute:
 		# disable shell echo
 		# Otherwise shell echos from a large --put may still be in
 		# progress when putfile() returns.  Even with disabled echo,
-		# target will send a shell prompt each time it receives a
-		# newline, so this does not eliminate all traffic from the
-		# target, it just reduces it.
+		# remote system will send a shell prompt each time it receives
+		# a newline, so this does not eliminate all traffic from the
+		# remote system, it just reduces it.
 		self._safe_write('stty -echo\n')
 
 		# Create/zero the file
@@ -276,7 +276,7 @@ class RemoteExecute:
 	def _safe_write(self, data):
 		self.fp.write(data)
 		if data.endswith('\n'):
-			# give the target system time for disk/flash I/O
+			# give the remote system time for disk/flash I/O
 			if self.IO_TIME is not None:
 				time.sleep(self.IO_TIME)
 
@@ -312,7 +312,7 @@ class SerialTerminal(RemoteExecute):
 def usage():
 	print '\nUsage: %s [OPTIONS]\n' % os.path.basename(sys.argv[0])
 	print '   -b, --baudrate=<baud>           Serial port baud rate [115200]'
-	print '   -B, --basic                     Use basic (minimal) target commands'
+	print '   -B, --basic                     Use basic (minimal) remote system commands'
 	print '   -d, --destination=<file path>   Path to destination file'
 	print '   -g, --get                       Get a file from the remote system'
 	print '   -h, --help                      Show help'
@@ -320,7 +320,7 @@ def usage():
 	print '   -c, --cmd="command with args"   Execute a command on the remote system'
 	print '   -M, --md5sum                    verify file transfer with md5sum'
 	print '   -m, --minicom=<name>            Name of the minicom config file to use'
-	print '   -P, --paranoid                  Assume target is fragile, be conservative'
+	print '   -P, --paranoid                  Assume fragile remote system, be conservative'
 	print '   -s, --source=<file path>        Path to source file'
 	print '   -t, --time=<seconds>            delay in _safe_write() [if -P ' + str(paranoid_time) + ' else 0]'
 	print '   -v, --verbose                   Print more information (cumulative)'
@@ -328,14 +328,15 @@ def usage():
 	print ''
 	print 'Side-effects:'
 	print '  --put'
-	print '    - shell echo will be enabled on target (stty echo)'
+	print '    - shell echo will be enabled on remote system (stty echo)'
 	print '    - if exception occurs, shell echo may be disabled on'
-	print '      target (target can be fixed with command "stty echo")'
+	print '      remote system (remote system can be fixed with command'
+	print '      "stty echo")'
 	print ''
-	print 'Target Dependencies:'
+	print 'Remote System Dependencies:'
 	print '  - May hang if the shell prompt is zero bytes long'
-	print '  - Target shell echos \\r\\n at end of command input'
-	print '  - Target shell built-ins or programs:'
+	print '  - Remote system shell echos \\r\\n at end of command input'
+	print '  - Remote system shell built-ins or programs:'
 	print '    --get --basic  :  cat, echo'
 	print '    --get          :                uuencode'
 	print '    --get --md5sum :  stat, md5sum, uuencode'
@@ -345,7 +346,6 @@ def usage():
 	print '  - execute a command (--cmd)'
 	print '    - will hang for command "bash"'
 	print '    - will hang for command "exit" (exiting bash)'
-	print ''
 	print ''
 	print 'Return:'
 	print '  0  no error'
