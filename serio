@@ -219,8 +219,6 @@ class RemoteExecute:
 			return mode, outfile.getvalue()
 
 
-
-
 	def putfile(self, data, filename):
 		i         = 0
 		j         = 0
@@ -285,6 +283,21 @@ class RemoteExecute:
 	def close(self):
 		self.fp.close()
 
+	def cmd(self, cmd_str, timeout=None):
+                delim="[[&&%s&&]]" % "serio_cmd_done"
+		self.fp.write(cmd_str + ' ; echo "%s"\n' % delim)
+		line = self.fp.readline()
+
+		# should do this in a thread so we can output while
+		# the data is coming back
+		# FIXTHIS - use timeout here
+		result = self.readuntil(None, None, delim)
+
+		# Sending output over a terminal turns all \n's to \r\n's
+		result = result.replace("\r\n", "\n")
+		return result
+
+
 class SerialTerminal(RemoteExecute):
 
 	def __init__(self, basic, checksum, port, baudrate, io_time):
@@ -296,12 +309,6 @@ class SerialTerminal(RemoteExecute):
 			self.serial.open()
 		RemoteExecute.__init__(self, fp=self.serial, io_time=io_time)
 
-
-
-
-
-
-
 def usage():
 	print '\nUsage: %s [OPTIONS]\n' % os.path.basename(sys.argv[0])
 	print '   -b, --baudrate=<baud>           Serial port baud rate [115200]'
@@ -310,6 +317,7 @@ def usage():
 	print '   -g, --get                       Get a file from the remote system'
 	print '   -h, --help                      Show help'
 	print '   -p, --put                       Put a file to the remote system'
+	print '   -c, --cmd="command with args"   Execute a command on the remote system'
 	print '   -M, --md5sum                    verify file transfer with md5sum'
 	print '   -m, --minicom=<name>            Name of the minicom config file to use'
 	print '   -P, --paranoid                  Assume target is fragile, be conservative'
@@ -361,10 +369,11 @@ def main():
 
 	try:
 		opts, args = GetOpt(sys.argv[1:],
-				    'b:Bd:ghMm:pPs:t:vy:',
+					'b:Bc:d:ghMm:pPs:t:vy:',
 				    [
 				     'baudrate=',
 				     'basic',
+				     'cmd=',
 				     'destination=',
 				     'get',
 				     'help'
@@ -387,6 +396,9 @@ def main():
 			baudrate = arg
 		elif opt in ('-B', '--basic'):
 			basic = 1
+		elif opt in ('-c', '--cmd'):
+			action = 'cmd'
+			cmd_str = arg
 		elif opt in ('-d', '--destination'):
 			destination = arg
 		elif opt in ('-g', '--get'):
@@ -418,12 +430,13 @@ def main():
 		print 'Usage error: must specify either -g or -p options'
 		usage()
 
-	if not source:
-		print 'Usage error: must specify the -s option'
-		usage()
+	if action in ['get','put']:
+		if not source:
+			print 'Usage error: must specify the -s option'
+			usage()
 
-	if destination is None or destination == ".":
-		destination = os.path.basename(source)
+		if destination is None or destination == ".":
+			destination = os.path.basename(source)
 
 	if minicom is not None:
 		port     = minicom.port()
@@ -455,6 +468,16 @@ def main():
 		except Exception, e:
 			print "\nERROR:", e
 			sys.exit(3)
+
+	elif action == 'cmd':
+		try:
+			data = sterm.cmd(cmd_str)
+			if len(data):
+				print data
+		except Exception, e:
+			print "ERROR:", e
+	else:
+		print "ERROR: unknown action '%s'" % action
 			
 	sterm.close()
 
