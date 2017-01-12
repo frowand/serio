@@ -69,7 +69,9 @@ class ParseMinicom:
 
 class RemoteExecute:
 
-	DELIM          = "THIS IS THE END, BEAUTIFUL FRIEND"
+	# value of DELIM split into multiple parts so that this file
+	# can be transferred by serio without triggering end of read
+	DELIM          = '[[&&' + 'serio_cmd_done' + '&&]]'
 	DATA_PER_WRITE = 100
 	PRINT_INTERVAL = 256
 
@@ -284,14 +286,13 @@ class RemoteExecute:
 		self.fp.close()
 
 	def cmd(self, cmd_str, timeout=None):
-		delim="[[&&serio_cmd_done&&]]"
-		self.fp.write(cmd_str + ' ; echo "%s"\n' % delim)
+		self.fp.write(cmd_str + ' ; echo "%s"\n' % self.DELIM)
 		line = self.fp.readline()
 
 		# should do this in a thread so we can output while
 		# the data is coming back
 		# FIXME - use timeout here
-		result = self.readuntil(None, None, delim)
+		result = self.readuntil(None, None, self.DELIM)
 
 		# Sending output over a terminal turns all \n's to \r\n's
 		result = result.replace("\r\n", "\n")
