@@ -284,13 +284,13 @@ class RemoteExecute:
 		self.fp.close()
 
 	def cmd(self, cmd_str, timeout=None):
-                delim="[[&&%s&&]]" % "serio_cmd_done"
+		delim="[[&&serio_cmd_done&&]]"
 		self.fp.write(cmd_str + ' ; echo "%s"\n' % delim)
 		line = self.fp.readline()
 
 		# should do this in a thread so we can output while
 		# the data is coming back
-		# FIXTHIS - use timeout here
+		# FIXME - use timeout here
 		result = self.readuntil(None, None, delim)
 
 		# Sending output over a terminal turns all \n's to \r\n's
@@ -340,6 +340,12 @@ def usage():
 	print '    --get          :                uuencode'
 	print '    --get --md5sum :  stat, md5sum, uuencode'
 	print '    --put          :  stty, echo'
+	print ''
+	print 'Known Problems:'
+	print '  - execute a command (--cmd)'
+	print '    - will hang for command "bash"'
+	print '    - will hang for command "exit" (exiting bash)'
+	print ''
 	print ''
 	print 'Return:'
 	print '  0  no error'
@@ -427,7 +433,10 @@ def main():
 			io_time = paranoid_time
 
 	if action is None:
-		print 'Usage error: must specify either -g or -p options'
+		print 'Usage error: must specify an action option'
+		print '   --cmd'
+		print '   --get'
+		print '   --put'
 		usage()
 
 	if action in ['get','put']:
