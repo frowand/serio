@@ -375,14 +375,13 @@ def main():
 
 	try:
 		opts, args = GetOpt(sys.argv[1:],
-					'b:Bc:d:ghMm:pPs:t:vy:',
-				    [
-				     'baudrate=',
+				    'b:Bc:d:ghMm:pPs:t:vy:',
+				    ['baudrate=',
 				     'basic',
 				     'cmd=',
 				     'destination=',
 				     'get',
-				     'help'
+				     'help',
 				     'md5sum',
 				     'minicom=',
 				     'put',
@@ -433,16 +432,16 @@ def main():
 			io_time = paranoid_time
 
 	if action is None:
-		print 'Usage error: must specify an action option'
+		print 'ERROR: must specify an action option'
 		print '   --cmd'
 		print '   --get'
 		print '   --put'
-		usage()
+		sys.exit(1)
 
 	if action in ['get','put']:
 		if not source:
-			print 'Usage error: must specify the -s option'
-			usage()
+			print 'ERROR: must specify the -s option'
+			sys.exit(1)
 
 		if destination is None or destination == ".":
 			destination = os.path.basename(source)
