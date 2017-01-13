@@ -357,7 +357,6 @@ Return:
   3  --get error
 
 	'''
-	sys.exit(1)
 
 
 paranoid_time = 0.1
@@ -398,7 +397,8 @@ def main():
 				   )
 	except GetoptError, e:
 		print 'Usage error:', e
-		usage()
+		print 'Help available via: \'%s -h\'' % os.path.basename(sys.argv[0])
+		sys.exit(1)
 
 	for opt, arg in opts:
 		if opt in ('-b', '--baudrate'):
@@ -414,6 +414,7 @@ def main():
 			action = 'get'
 		elif opt in ('-h', '--help'):
 			usage()
+			sys.exit(1)
 		elif opt in ('-M', '--md5sum'):
 			checksum = CHECKSUM_MD5SUM
 		elif opt in ('-m', '--minicom'):
