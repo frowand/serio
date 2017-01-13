@@ -310,50 +310,53 @@ class SerialTerminal(RemoteExecute):
 			self.serial.open()
 		RemoteExecute.__init__(self, fp=self.serial, io_time=io_time)
 
+
 def usage():
-	print '\nUsage: %s [OPTIONS]\n' % os.path.basename(sys.argv[0])
-	print '   -b, --baudrate=<baud>           Serial port baud rate [115200]'
-	print '   -B, --basic                     Use basic (minimal) remote system commands'
-	print '   -d, --destination=<file path>   Path to destination file'
-	print '   -g, --get                       Get a file from the remote system'
-	print '   -h, --help                      Show help'
-	print '   -p, --put                       Put a file to the remote system'
-	print '   -c, --cmd="command with args"   Execute a command on the remote system'
-	print '   -M, --md5sum                    verify file transfer with md5sum'
-	print '   -m, --minicom=<name>            Name of the minicom config file to use'
-	print '   -P, --paranoid                  Assume fragile remote system, be conservative'
-	print '   -s, --source=<file path>        Path to source file'
-	print '   -t, --time=<seconds>            delay in _safe_write() [if -P ' + str(paranoid_time) + ' else 0]'
-	print '   -v, --verbose                   Print more information (cumulative)'
-	print '   -y, --port=<serial port>        Serial port to use [/dev/ttyUSB0]'
-	print ''
-	print 'Side-effects:'
-	print '  --put'
-	print '    - shell echo will be enabled on remote system (stty echo)'
-	print '    - if exception occurs, shell echo may be disabled on'
-	print '      remote system (remote system can be fixed with command'
-	print '      "stty echo")'
-	print ''
-	print 'Remote System Dependencies:'
-	print '  - May hang if the shell prompt is zero bytes long'
-	print '  - Remote system shell echos \\r\\n at end of command input'
-	print '  - Remote system shell built-ins or programs:'
-	print '    --get --basic  :  cat, echo'
-	print '    --get          :                uuencode'
-	print '    --get --md5sum :  stat, md5sum, uuencode'
-	print '    --put          :  stty, echo'
-	print ''
-	print 'Known Problems:'
-	print '  - execute a command (--cmd)'
-	print '    - will hang for command "bash"'
-	print '    - will hang for command "exit" (exiting bash)'
-	print ''
-	print 'Return:'
-	print '  0  no error'
-	print '  1  --help or argument error'
-	print '  2  --put error'
-	print '  3  --get error'
-	print ''
+	print '\nUsage: %s [OPTIONS]' % os.path.basename(sys.argv[0])
+	print '''
+   -b, --baudrate=<baud>           Serial port baud rate [115200]
+   -B, --basic                     Use basic (minimal) remote system commands
+   -d, --destination=<file path>   Path to destination file
+   -g, --get                       Get a file from the remote system
+   -h, --help                      Show help
+   -p, --put                       Put a file to the remote system
+   -c, --cmd="command with args"   Execute a command on the remote system
+   -M, --md5sum                    verify file transfer with md5sum
+   -m, --minicom=<name>            Name of the minicom config file to use
+   -P, --paranoid                  Assume fragile remote system, be conservative
+   -s, --source=<file path>        Path to source file
+   -t, --time=<seconds>            delay in _safe_write() [if -P ''' + str(paranoid_time) + ''' else 0]
+   -v, --verbose                   Print more information (cumulative)
+   -y, --port=<serial port>        Serial port to use [/dev/ttyUSB0]
+
+Side-effects:
+  --put
+    - shell echo will be enabled on remote system (stty echo)
+    - if exception occurs, shell echo may be disabled on
+      remote system (remote system can be fixed with command
+      "stty echo")
+
+Remote System Dependencies:
+  - May hang if the shell prompt is zero bytes long
+  - Remote system shell echos \\r\\n at end of command input
+  - Remote system shell built-ins or programs:
+    --get --basic  :  cat, echo
+    --get          :                uuencode
+    --get --md5sum :  stat, md5sum, uuencode
+    --put          :  stty, echo
+
+Known Problems:
+  - execute a command (--cmd)
+    - will hang for command "bash"
+    - will hang for command "exit" (exiting bash)
+
+Return:
+  0  no error
+  1  --help or argument error
+  2  --put error
+  3  --get error
+
+	'''
 	sys.exit(1)
 
 
