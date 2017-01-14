@@ -285,18 +285,35 @@ class RemoteExecute:
 	def close(self):
 		self.fp.close()
 
-	def cmd(self, cmd_str, timeout=None):
-		self.fp.write(cmd_str + ' ; echo "%s"\n' % self.DELIM)
-		line = self.fp.readline()
+	def cmd(self, cmd_str, remote_shell=None, timeout=None):
+		# required before calls to execute()
+		self._safe_write('\n')
+		self.fp.readline()
+
+		if remote_shell:
+			# FIXME - add option to choose what shell to use
+			#         have minimally tested sh and bash
+			remote_cmd = 'sh -c \'' + cmd_str + '\' ; r=$?; echo "%s"; echo "${r}"' % self.DELIM
+		else:
+			remote_cmd = cmd_str + ' ; echo "%s"\n' % self.DELIM
+		self.execute(remote_cmd)
 
 		# should do this in a thread so we can output while
 		# the data is coming back
 		# FIXME - use timeout here
 		result = self.readuntil(None, None, self.DELIM)
 
+		if remote_shell:
+			# consume '\n' leftover from readuntil()
+			self.fp.readline()
+			remote_status = self.fp.readline()
+			remote_status = remote_status.replace("\r\n", "")
+		else:
+			remote_status = 0
+
 		# Sending output over a terminal turns all \n's to \r\n's
 		result = result.replace("\r\n", "\n")
-		return result
+		return remote_status, result
 
 
 class SerialTerminal(RemoteExecute):
@@ -323,6 +340,7 @@ def usage():
    -c, --cmd="command with args"   Execute a command on the remote system
    -M, --md5sum                    verify file transfer with md5sum
    -m, --minicom=<name>            Name of the minicom config file to use
+   -N, --no-remote-shell           Do not invoke a remote shell to execute --cmd
    -P, --paranoid                  Assume fragile remote system, be conservative
    -s, --source=<file path>        Path to source file
    -t, --time=<seconds>            delay in _safe_write() [if -P ''' + str(paranoid_time) + ''' else 0]
@@ -349,12 +367,15 @@ Known Problems:
   - execute a command (--cmd)
     - will hang for command "bash"
     - will hang for command "exit" (exiting bash)
+    - can not be used to login to a shell
 
 Return:
-  0  no error
-  1  --help or argument error
-  2  --put error
-  3  --get error
+  If --cmd and --remote-shell then the exit status of the remote shell.
+  Otherwise:
+     0  no error
+     1  --help or argument error
+     2  --put error
+     3  --get error
 
 	'''
 
@@ -365,20 +386,23 @@ def main():
 
 	global verbose
 
-	action      = None
-	basic       = None
-	baudrate    = 115200
-	checksum    = CHECKSUM_NONE
-	destination = None
-	io_time     = None
-	minicom     = None
-	paranoid    = None
-	port        = '/dev/ttyUSB0'
-	source      = None
+	exit_status = 0
+
+	action       = None
+	basic        = None
+	baudrate     = 115200
+	checksum     = CHECKSUM_NONE
+	destination  = None
+	io_time      = None
+	minicom      = None
+	paranoid     = None
+	port         = '/dev/ttyUSB0'
+	remote_shell = 1
+	source       = None
 
 	try:
 		opts, args = GetOpt(sys.argv[1:],
-				    'b:Bc:d:ghMm:pPs:t:vy:',
+				    'b:Bc:d:ghMNm:pPs:t:vy:',
 				    ['baudrate=',
 				     'basic',
 				     'cmd=',
@@ -389,6 +413,7 @@ def main():
 				     'minicom=',
 				     'put',
 				     'paranoid',
+				     'no-remote-shell',
 				     'source=',
 				     'time=',
 				     'verbose',
@@ -423,6 +448,8 @@ def main():
 			action = 'put'
 		elif opt in ('-P', '--paranoid'):
 			paranoid = 1
+		elif opt in ('-N', '--no-remote-shell'):
+			remote_shell = 0
 		elif opt in ('-s', '--source'):
 			source = arg
 		elif opt in ('-t', '--time'):
@@ -484,7 +511,8 @@ def main():
 
 	elif action == 'cmd':
 		try:
-			data = sterm.cmd(cmd_str)
+			remote_status, data = sterm.cmd(cmd_str, remote_shell)
+			exit_status = remote_status
 			if len(data):
 				print data
 		except Exception, e:
@@ -494,6 +522,7 @@ def main():
 			
 	sterm.close()
 
+	sys.exit(int(exit_status))
 
 
 if __name__ == '__main__':
