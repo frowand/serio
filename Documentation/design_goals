@@ -1,0 +1,33 @@
+
+The purpose of serio is to provide a way to transfer files to and from
+a remote system over a serial device, with a minimal dependency on
+programs on the remote system.
+
+  - The type of targeted remote system is an embedded Linux computer.
+
+  - The remote system is expected to have a shell attached to the serial port.
+
+  - The remote system is expected to have at least some basic commands and
+    programs as provided by busybox or toybox.
+
+serio may implement methods of file transfer that utilize more extensive
+capabilities on the remote system for reasons such as improved throughput
+and increased data integrity.  Any such enhanced capability MAY NOT remove
+the ability to instead use the algorithm(s) that have fewer remote system
+dependencies.
+
+The Fuego test framework project has chosen to use serio to support a
+serial link as an alternate communication channel with a remote system
+to be tested.  Serio has been enhanced in a few ways to support the needs
+of Fuego to execute shell commands on a remote system and to extend the
+complexity of the specification of files to be copied.  These two features
+are modelled to be similar (but not identical) to the ssh and scp commands.
+One of the design goals of serio is to support the needs of the Fuego test
+framework in a way that does not interfere with the other serio design
+goals.
+
+Information about the Fuego test framework can be found at:
+
+   http://bird.org/fuego/FrontPage
+   http://elinux.org/Fuego
+   http://ltsi.linuxfoundation.org/ltsi-test-project
