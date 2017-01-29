@@ -136,14 +136,14 @@ if [ $# -ne 0 ] ; then
 	exit 1
 fi
 
-# zzz Should have an option to do something analagous to this on the target,
-# zzz but do not want to add "mktemp" dependency on remote system, so can
-# zzz hand craft with something like:
-# zzz
-# zzz $remote_dir="${remote_dir}/tmp"
-# zzz $SERIO $SERIAL_DEV -c 'if [ -f tmp -o -d tmp ] ; then echo error ; else mkdir tmp ; echo ok ; fi'
-# zzz
-# zzz then modify cleanup() to: $SERIO $SERIAL_DEV -c 'rm -r ${remote_dir}'
+# FIXME - Should have an option to do something analagous to mktemp on the
+# target, but do not want to add "mktemp" dependency on remote system, so
+# can hand craft with something like:
+
+#     $remote_dir="${remote_dir}/tmp"
+#     $SERIO $SERIAL_DEV -c 'if [ -f tmp -o -d tmp ] ; then echo error ; else mkdir tmp ; echo ok ; fi'
+#
+#     then modify cleanup() to: $SERIO $SERIAL_DEV -c 'rm -r ${remote_dir}'
 
 tmp_dir=$( mktemp --tmpdir -d serio-test.XXXXXXXXXX )
 
@@ -198,17 +198,17 @@ done
 # test put and get
 # run some put and get tests, timing them
 
-# zzz In the result messages:
-# zzz   suggest "PASS" instead of "ok"
-# zzz   suggest "FAIL" instead of "not ok"
-# zzz
-# zzz I would have made those changes myself, but we have had the discussion
-# zzz about the lack of consistency in test pass/fail messages across test
-# zzz projects, so I figured this might not be as obvious as what I am
-# zzz suggesting.
-# zzz
-# zzz Suggest less verbosity and reordering for easier parsing of the messages,
-# zzz   eg s/time for get of $f: %E/time | %E | get $f/
+# FIXME- In the result messages:
+#          suggest "PASS" instead of "ok"
+#          suggest "FAIL" instead of "not ok"
+#
+#     I would have made those changes myself, but we have had the discussion
+#     about the lack of consistency in test pass/fail messages across test
+#     projects, so I figured this might not be as obvious as what I am
+#     suggesting.
+#
+# FIXME - Suggest less verbosity and reordering for easier parsing of the messages,
+#         eg s/time for get of $f: %E/time | %E | get $f/
 
 test_num=1
 
@@ -255,8 +255,6 @@ function check_cksum {
 	local ret_f_s=$(cksum $ret_f_full | cut -d " " -f 1,2)
 
 	local desc="$test_num - check ${ret_f} cksum with ${f} cksum"
-	# zzz old variable names in this if were typos, even before
-	# zzz I changed the names in this function:
 	if [ "${f_s}" == "${ret_f_s}" ] ; then
 		echo "ok $desc"
 	else
