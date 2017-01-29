@@ -134,10 +134,31 @@ class RemoteExecute:
 			print
 		return data
 
+	def prime_before_first_execute(self):
+		# required before first call of execute(), after this
+		# program begins
+
+		cmd = "#"
+		self.fp.write(cmd + "\n")
+
+		# remote system shell echos command, slurp it up
+		cmd_echo = self.fp.readline()
+
+		# The probably will not be a prompt, becuase the remote
+		# shell probably sent it before serio started execution.
+		# Check for the command with carriage return, newline.
+		# If the echoed command does not include this then
+		# repeat the readline().
+		#
+		if not cmd_echo.endswith(cmd + "\r\n"):
+			cmd_echo = self.fp.readline()
+
 	def execute(self, cmd):
 		# This program MUST send a newline to the remote system once
 		# before calling a sequence of execute() so that the data
-		# read by readline() will include a shell prompt.
+		# read by readline() will include a shell prompt.  This is
+		# accomplished by calling prime_before_first_execute() before
+		# a series of calls to execute().
 
 		self.fp.write(cmd + "\n")
 
@@ -161,8 +182,7 @@ class RemoteExecute:
 
 	def getfile(self, filename):
 		# required before calls to execute()
-		self._safe_write('\n')
-		self.fp.readline()
+		self.prime_before_first_execute()
 
 		if self.basic:
 			self.execute("cat '%s' && echo '%s'" % (filename, self.DELIM))
@@ -226,10 +246,8 @@ class RemoteExecute:
 		j         = 0
 		data_size = len(data)
 
-		# try to ensure at shell prompt
 		# also, required before calls to execute()
-		self._safe_write('\n')
-		self.fp.readline()
+		self.prime_before_first_execute()
 
 		# disable shell echo
 		# Otherwise shell echos from a large --put may still be in
@@ -287,8 +305,7 @@ class RemoteExecute:
 
 	def cmd(self, cmd_str, remote_shell=None, timeout=None):
 		# required before calls to execute()
-		self._safe_write('\n')
-		self.fp.readline()
+		self.prime_before_first_execute()
 
 		if remote_shell:
 			# FIXME - add option to choose what shell to use
