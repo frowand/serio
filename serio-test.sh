@@ -1,66 +1,195 @@
 #!/bin/bash
 # serio-test.sh - unit test for serio
-#
 
-verbose=0
-if [ "x$1" == "x-v" ] ; then
-	verbose=1
-	shift
-fi
 
-if [ "x$1" == "x--debug" ] ; then
-	set -x
-	shift
-fi
-
-if [ "x$1" == "x-h" ] ; then
-	echo "usage: serio-test.sh [-v] [--debug] [-h] [-nc]"
-	echo "  -v       Be verbose"
-       	echo "  --debug  Print each shell line as it is executed"
-	echo "  -h       Show this usage help"
-	echo "  -nc      Don't clean up test files"
-	exit 1
-fi
-
-SERIAL_DEV=/dev/ttyACM1
-target_dir=/home/a
-
-FILELIST="file1 file2 file3"
-FILELIST="file1 file2"
-
-# set this to something to wait between operations
-SLEEP_TIME=0
-#SLEEP_TIME=30
-
-# use this to control whether to use paranoid mode with serio
-#PARANOID="-P"
-
-# use this to control whether to use basic mode (minimal commands)
-#BASIC="-B"
-SERIO_ARGS="-y $SERIAL_DEV $PARANOID $BASIC -t 0.05"
+#_______________________________________________________________________________
 
 function vecho {
 	if [ $verbose -gt 0 ] ; then
-		echo $@
+		echo "$@"
 	fi
 }
 
+
+function usage
+{
+echo "
+usage: ${script_name} [-v] [--debug] [-h] [-nc]
+
+   -B, --basic               *Use basic (minimal) remote system commands
+  --debug                     Print each shell line as it is executed
+   -F, --numfile <count>      Number of random data test files
+   -h, -help, --help          Show help
+   -nc                        Don't clean up test files
+   -s, --sleep <seconds>      Time to sleep between --get and --put tests [0.0]
+   -t, --time <seconds>      *Delay in _safe_write()
+   -y, --port <serial port>  *Serial port to use [/dev/ttyUSB0]
+  --remote-dir <dir>          Directory on remote system to put files into [.]
+   -v                         Be verbose
+
+  * Sets a serio command line option
+
+" >&2
+}
+
+
+#_______________________________________________________________________________
+
+script_name=`basename $0`
+
+#PARANOID="-P"
+
+unset BASIC
+unset SERIAL_DEV
+unset PARANOID
+unset SLEEP
+unset TIME
+
+do_cleanup=1
+help=0
+numfile=1
+remote_dir="."
+verbose=0
+while [ $# -gt 0 ] ; do
+
+	case $1 in
+
+		-B | --basic )
+			shift
+			BASIC="-B"
+			;;
+
+		--debug )
+			shift
+			set -x
+			;;
+
+		-F | --numfile )
+			shift
+			numfile=$1
+			shift
+			;;
+
+		-h | -help | --help )
+			shift
+			help=1
+			;;
+
+		--nc )
+			shift
+			do_cleanup=0
+			;;
+
+		-P | --paranoid )
+			PARANOID="-P"
+			shift
+			;;
+
+		-s | --sleep )
+			shift
+			SLEEP="sleep $1"
+			shift
+			;;
+
+		-t | --time )
+			shift
+			TIME="-t $1"
+			shift
+			verbose=1
+			;;
+
+		-T | --remote-dir )
+			shift
+			remote_dir="$1"
+			shift
+			verbose=1
+			;;
+
+		-v )
+			shift
+			verbose=1
+			;;
+
+		-y | --port )
+			shift
+			SERIAL_DEV="-y $1"
+			shift
+			verbose=1
+			;;
+
+		* )
+			break
+			;;
+
+		esac
+done
+
+
+if [ $help -eq 1 ] ; then
+	usage
+	exit 1
+fi
+
+if [ $# -ne 0 ] ; then
+	echo "ERROR: unexpected parameter:"                                  >&2
+	echo "       $@"                                                     >&2
+	exit 1
+fi
+
+# zzz Should have an option to do something analagous to this on the target,
+# zzz but do not want to add "mktemp" dependency on remote system, so can
+# zzz hand craft with something like:
+# zzz
+# zzz $remote_dir="${remote_dir}/tmp"
+# zzz $SERIO $SERIAL_DEV -c 'if [ -f tmp -o -d tmp ] ; then echo error ; else mkdir tmp ; echo ok ; fi'
+# zzz
+# zzz then modify cleanup() to: $SERIO $SERIAL_DEV -c 'rm -r ${remote_dir}'
+
+tmp_dir=$( mktemp --tmpdir -d serio-test.XXXXXXXXXX )
+
+
+FILE_LIST="file_1"
+for k in $( seq 2 $(( ${numfile} + 1 )) ) ; do
+	FILE_LIST="${FILE_LIST} file_${k}"
+done
+
+
+SERIO_ARGS="$SERIAL_DEV $PARANOID $BASIC $TIME"
+
+# shell builtin 'time' does not recognize -f
+TIME="/usr/bin/time"
+
+# respect $PATH
+SERIO=$( which serio )
+
+
+vecho "remote-dir = ${remote_dir}"
+vecho "FILE_LIST  = ${FILE_LIST}"
+vecho "SERIAL_DEV = ${SERIAL_DEV}"
+vecho "SERIO_ARGS = ${SERIO_ARGS}"
+vecho "SLEEP      = ${SLEEP}"
+vecho "SERIO      = ${SERIO}"
+
+
+#########################
 # create test files
-echo "  Creating files..."
+
+echo "Creating files..."
 
 # make a super-small, super-safe file for file1
 echo "this is the first test file for serio" >file1
 
-size=1
-file_arr=($FILELIST)
-unset file_arr[0]
-for f in ${file_arr[@]} ; do
-	vecho "Creating file ${f}"
+if [ $verbose -gt 0 ] ; then
+	ddout="/dev/stdout"
+else
 	ddout="/dev/null"
-	if [ $verbose -gt 0 ] ; then
-		ddout="/dev/stdout"
-	fi
-	dd if=/dev/urandom of=${f} bs=1000 count=${size} >$ddout 2>&1
+fi
+
+size=1
+for f in ${FILE_LIST} ; do
+	f_full="${tmp_dir}/$f"
+	vecho "Creating file ${f}"
+	dd if=/dev/urandom of=${f_full} bs=1000 count=${size} >$ddout 2>&1
 	size=$(( $size * 10 ))
 	i=$(( $i + 1 ))
 done
@@ -69,31 +198,44 @@ done
 # test put and get
 # run some put and get tests, timing them
 
-#FILELIST="file1 file2 file3 file4"
-#FILELIST=file1
+# zzz In the result messages:
+# zzz   suggest "PASS" instead of "ok"
+# zzz   suggest "FAIL" instead of "not ok"
+# zzz
+# zzz I would have made those changes myself, but we have had the discussion
+# zzz about the lack of consistency in test pass/fail messages across test
+# zzz projects, so I figured this might not be as obvious as what I am
+# zzz suggesting.
+# zzz
+# zzz Suggest less verbosity and reordering for easier parsing of the messages,
+# zzz   eg s/time for get of $f: %E/time | %E | get $f/
 
 test_num=1
 
-echo "Putting files: $FILELIST"
 ##  put some files
-for f in $FILELIST ; do
+
+echo "Putting files: $FILE_LIST"
+for f in $FILE_LIST ; do
+	f_full="${tmp_dir}/$f"
 	vecho "Putting file ${f}"
-	/usr/bin/time -f "      time for put of $f: %E" ./serio $SERIO_ARGS -p --source=$f --destination="${target_dir}/$f" ;
-	sleep $SLEEP_TIME
+	${TIME} -f "      time for put of $f: %E" $SERIO $SERIO_ARGS -p --source=$f_full --destination="${remote_dir}/$f" ;
+	$SLEEP
 done
 
 ## get some files
-echo "Getting files: $FILE_LIST"
-for f in $FILELIST ; do
-	ret_filename="${f}-return"
-	vecho "  Getting file ${f} (into $ret_filename)"
-	/usr/bin/time -f "      time for get of $f: %E" ./serio $SERIO_ARGS -g --source="${target_dir}/$f" --destination=$ret_filename ;
-	sleep $SLEEP_TIME
 
-	if [ -e "$ret_filename" ] ; then
-		echo "ok $test_num - get of file $ret_filename"
+echo "Getting files: $FILE_LIST"
+for f in $FILE_LIST ; do
+	ret_f="${f}-return"
+	ret_f_full="${tmp_dir}/${ret_f}"
+	vecho "  Getting file ${f} (into $ret_f)"
+	${TIME} -f "      time for get of $f: %E" $SERIO $SERIO_ARGS -g --source="${remote_dir}/$f" --destination=$ret_f_full ;
+	$SLEEP
+
+	if [ -e "$ret_f_full" ] ; then
+		echo "ok $test_num - get of file $ret_f"
 	else
-		echo "not ok $test_num - get of file $ret_filename"
+		echo "not ok $test_num - get of file $ret_f"
 	fi
 	test_num=$(( $test_num + 1 ))
 done
@@ -105,13 +247,17 @@ fi
 
 function check_cksum {
 	local f="$1"
-	local fr="${f}-return"
+	local ret_f="${f}-return"
+	local f_full="${tmp_dir}/${f}"
+	local ret_f_full="${tmp_dir}/${ret_f}"
 
-	local fs=$(cksum $f | cut -d " " -f 1,2)
-	local frs=$(cksum $fr | cut -d " " -f 1,2)
+	local f_s=$(cksum $f_full | cut -d " " -f 1,2)
+	local ret_f_s=$(cksum $ret_f_full | cut -d " " -f 1,2)
 
-	local desc="$test_num - check ${fr} cksum with ${f} cksum"
-	if [ "${f1s}" = "${f1rs}" ] ; then
+	local desc="$test_num - check ${ret_f} cksum with ${f} cksum"
+	# zzz old variable names in this if were typos, even before
+	# zzz I changed the names in this function:
+	if [ "${f_s}" == "${ret_f_s}" ] ; then
 		echo "ok $desc"
 	else
 		echo "not ok $desc"
@@ -119,26 +265,26 @@ function check_cksum {
 	test_num=$(( $test_num + 1 ))
 }
 
-for f in $FILELIST ; do
+for f in $FILE_LIST ; do
 	check_cksum $f
 done
 
 #########################
 # test some commands
-#./serio $SERIO_ARGS -c "echo hello there!"
+#$SERIO $SERIO_ARGS -c "echo hello there!"
 
-echo "  Executing some commands"
-vecho "     Execute 'ls -l $target_dir'"
-./serio $SERIO_ARGS -c "ls -l $target_dir"
+echo "Executing some commands"
+vecho "     Execute 'ls -l $remote_dir'"
+$SERIO $SERIO_ARGS -c "ls -l $remote_dir"
 
 vecho "     Execute 'echo hello there'"
-res1=$(./serio $SERIO_ARGS -c "echo hello there")
+res1=$($SERIO $SERIO_ARGS -c "echo hello there")
 exp1=$'hello there'
 
 echo "expected  : [$exp1]"
 echo "got result: [$res1]"
 
-desc="$test_num - run 'echo hello there' on target"
+desc="$test_num - run 'echo hello there' on remote"
 if [ "$res1" = "$exp1" ] ; then
 	echo "ok $desc"
 else
@@ -150,12 +296,15 @@ fi
 
 function cleanup {
 	# remove test files
-	echo "Doing cleanup"
-	./serio -y $SERIAL_DEV -c "rm ${target_dir}/file[12345]"
-	rm file[12345]
-	rm file[12345]-return
+
+	$SERIO $SERIAL_DEV -c "rm ${remote_dir}/file_[1-9]*"
+
+	rm -r ${tmp_dir}
 }
 
-if [ ! "x$1" == "x-nc" ] ; then
+if [ $do_cleanup -eq 1 ] ; then
+	echo "Doing cleanup"
 	cleanup
+else
+	echo "Not doing cleanup, test files are in ${tmp_dir}"
 fi
