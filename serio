@@ -31,6 +31,7 @@ import hashlib
 import StringIO
 import uu
 from getopt import GetoptError, getopt as GetOpt
+import glob, stat
 
 # verbose
 #  1  bytes uploaded/downloaded
@@ -332,6 +333,47 @@ class RemoteExecute:
 		result = result.replace("\r\n", "\n")
 		return remote_status, result
 
+	def recursive_copy(self, src_dir, dst_dir):
+		if src_dir.endswith('/'):
+			if verbose > 0:
+				print src_dir
+			raise Exception("omitting directory: " + src_dir)
+		else:
+			head, tail = os.path.split(src_dir)
+			destin = os.path.join(dst_dir, tail)
+			if verbose > 0:
+				print destin
+			self.execute("mkdir -p '%s' 2> /dev/null" % destin)
+			self.execute("[[ -d '%s' ]] ; echo $? " % destin)
+			data = self.fp.readline()
+			if (int(data) == 0):
+				dst_dir = destin
+			else:
+				raise Exception("unable to create remote directory: " + data)
+
+		for root, dirs, files in os.walk(src_dir):
+			for item in dirs:
+				src_path = os.path.join(root, item)
+				rel_path = os.path.relpath(root, src_dir)
+				if rel_path is not '.':
+					dst_path = os.path.join(dst_dir, os.path.join(rel_path, item))
+				else:
+					dst_path = os.path.join(dst_dir, item)
+				self.cmd('mkdir -p %s' % dst_path)
+
+			for item in files:
+				relative = os.path.relpath(root, src_dir)
+				if relative is not '.':
+					dst_path = os.path.join(dst_dir, os.path.join(relative, item))
+				else:
+					dst_path = os.path.join(dst_dir, item)
+				src_path = os.path.join(root, item)
+				size = self.putfile(open(src_path, "rb").read(), dst_path)
+				mode = oct(stat.S_IMODE(os.lstat(src_path).st_mode))
+				self.execute("chmod '%s' '%s' " % (mode, dst_path))
+				if verbose > 0:
+					print 'Uploaded %d bytes from %s to %s' % (size, src_dir, dst_path)
+
 
 class SerialTerminal(RemoteExecute):
 
@@ -370,6 +412,9 @@ Side-effects:
     - if exception occurs, shell echo may be disabled on
       remote system (remote system can be fixed with command
       "stty echo")
+    - put path in double quotes (especially for wild cards)
+  --get
+    - put path in double quotes (especially for wild cards)
 
 Remote System Dependencies:
   - May hang if the shell prompt is zero bytes long
@@ -385,6 +430,8 @@ Known Problems:
     - will hang for command "bash"
     - will hang for command "exit" (exiting bash)
     - can not be used to login to a shell
+  - Put  with wildcard support
+    - wildcard put dont supports recursive copy -Python 2.7 glob.glob limitation
 
 Return:
   If --cmd and --remote-shell then the exit status of the remote shell.
@@ -503,25 +550,88 @@ def main():
 
 	if action == 'put':
 		try:
-			host_file = open(source, "rb")
-			size = sterm.putfile(host_file.read(), destination)
-		
-			if verbose > 0:
-				print 'Uploaded %d bytes from %s to %s' % (size, source, destination)
+			if "*" in source:
+					print "wildcard"
+					for filename in glob.glob(source):
+						if verbose > 1:
+							print os.path.basename(filename)
+						dest = os.path.join(destination, os.path.basename(filename))
+						if os.path.isdir(filename):
+							if verbose > 1:
+								print "directory for * is ", os.path.basename(filename)
+							dst_path = os.path.join(destination, os.path.basename(filename))
+							sterm.recursive_copy(os.path.basename(filename),  destination)
+						elif os.path.isfile(filename):
+							if verbose > 1:
+								print "filename for * is ", os.path.basename(filename)
+							dest = os.path.join(destination, os.path.basename(filename))
+							size = sterm.putfile(open(filename, "rb").read(), dest)
+							mode = oct(stat.S_IMODE(os.lstat(filename).st_mode))
+							sterm.execute("chmod '%s' '%s'" % (mode, dest))
+							if verbose > 0:
+								print 'Uploaded %d bytes from %s to %s' % (size, filename, dest)
+			elif os.path.isfile(source):
+					if verbose > 1:
+						print "source file is ", source
+					file_name = os.path.basename(source)
+					remote_status, data = sterm.cmd('[[ -d "%s" ]] ; echo $? ' % destination)
+					if (int(data) == 0):
+						destination = os.path.join(destination, file_name)
+					size = sterm.putfile(open(source, "rb").read(), destination)
+					if verbose > 0:
+						print 'Uploaded %d bytes from %s to %s' % (size, source, destination)
+					mode = oct(stat.S_IMODE(os.lstat(source).st_mode))
+					sterm.execute("chmod '%s' '%s' " % (mode, destination))
+
+			elif os.path.isdir(source):
+				if verbose > 1:
+					print "source directory is ", source
+				sterm.recursive_copy(source, destination)
+
 		except Exception, e:
 			print "ERROR:", e
 			sys.exit(2)
 
 	elif action == 'get':
 		try:
-			mode, data = sterm.getfile(source)
-			if len(data):
-				open(destination, "wb").write(data)
-				if mode != -1:
-					os.chmod(destination, mode)
+			if "*" in source:
+				if verbose > 1:
+					print "Wildcard entry"
+				data = sterm.cmd("ls -1 %s " % source)
+				if verbose > 1:
+					print data
+				for line in data.splitlines():
+					if verbose > 1:
+						print line
+					head, tail = os.path.split(line)
+					des = os.path.abspath(destination)
+					des = os.path.join(des, tail)
+					if verbose > 1:
+						print des
+					mode, contents = sterm.getfile(str(line))
+					if len(contents):
+						open(des, "wb").write(contents)
+						if mode != -1:
+							os.chmod(des_file, mode)
+			else:
+				mode, data = sterm.getfile(source)
+				if len(data):
+					des = os.path.abspath(destination)
+					if verbose > 1:
+						print des
+					if os.path.isdir(des):
+						head, tail = os.path.split(source)
+						des_file = os.path.join(des, tail)
+						open(des_file, "wb").write(data)
+						if mode != -1:
+							os.chmod(des_file, mode)
 
+					else:
+						open(des, "wb").write(data)
+						if mode != -1:
+							os.chmod(des, mode)
 			if verbose > 0:
-				print 'Downloaded %d bytes from %s to %s' % (len(data), source, destination)
+				print 'Downloaded %d bytes from %s to %s' % (len(data), source, des)
 		except Exception, e:
 			print "\nERROR:", e
 			sys.exit(3)
