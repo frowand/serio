@@ -120,7 +120,7 @@ class RemoteExecute:
 		if count is not None:
 
 			for i in range(0, count):
-				data = self.fp.read(1)
+				data += self.fp.read(1)
 				self.progress(len(data), count)
 
 		elif lines is not None:
