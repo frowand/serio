@@ -347,7 +347,6 @@ class RemoteExecute:
 
 		# should do this in a thread so we can output while
 		# the data is coming back
-		# FIXME - use timeout here
 		result = self.readuntil(None, None, self.DELIM)
 		# consume '\n' leftover from readuntil()
 		self.fp.readline()
@@ -391,10 +390,10 @@ class RemoteExecute:
 
 class SerialTerminal(RemoteExecute):
 
-	def __init__(self, basic, checksum, port, baudrate):
+	def __init__(self, basic, checksum, port, baudrate, timeout):
 		self.basic    = basic
 		self.checksum = checksum
-		self.serial   = serial.Serial(port=port, baudrate=baudrate)
+		self.serial   = serial.Serial(port=port, baudrate=baudrate, timeout=timeout)
 		already_open  = self.serial.isOpen()
 		if not already_open:
 			self.serial.open()
@@ -474,6 +473,7 @@ def main():
 	baudrate     = 115200
 	checksum     = CHECKSUM_NONE
 	destination  = None
+	timeout      = None
 	minicom      = None
 	port         = '/dev/ttyUSB0'
 	recurse      = None
@@ -482,7 +482,7 @@ def main():
 
 	try:
 		opts, args = GetOpt(sys.argv[1:],
-				    'b:Bc:d:ghMNm:prs:vy:',
+				    'b:Bc:d:ghMNm:prs:T:vy:',
 				    ['baudrate=',
 				     'basic',
 				     'cmd=',
@@ -495,6 +495,7 @@ def main():
 				     'recurse',
 				     'no-remote-shell',
 				     'source=',
+				     'timeout=',
 				     'verbose',
 				     'port=',
 				    ]
@@ -531,6 +532,8 @@ def main():
 			recurse = 1
 		elif opt in ('-s', '--source'):
 			source = arg
+		elif opt in ('-T', '--timeout'):
+			timeout = float(arg)
 		elif opt in ('-v', '--verbose'):
 			verbose += 1
 		elif opt in ('-y', '--port'):
@@ -555,7 +558,7 @@ def main():
 		port     = minicom.port()
 		baudrate = minicom.baudrate()
 
-	sterm = SerialTerminal(basic, checksum, port, baudrate)
+	sterm = SerialTerminal(basic, checksum, port, baudrate, timeout)
 
 	# required before calls to execute()
 	sterm.prime_before_first_execute()
