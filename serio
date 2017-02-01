@@ -146,6 +146,16 @@ class RemoteExecute:
 			print
 		return data
 
+	# read data from the serial port, for a fixed amount of time
+	# intended for short reads (e.g. to drain a small amount of
+	# data from the port, or to get the prompt)
+	def readuntil_time(self, duration):
+		saved_timeout = self.fp.timeout
+		self.fp.timeout = duration
+		data = self.fp.read(10000)
+		self.fp.timeout = saved_timeout
+		return data
+
 	def prime_before_first_execute(self):
 		# required after this program begins,
 		# before first call of execute()
@@ -181,6 +191,11 @@ class RemoteExecute:
 		# consume '\n' leftover from readuntil()
 		self.fp.readline()
 
+
+	def get_prompt(self):
+		self.fp.write("# gp\n")
+		data = self.readuntil_time(1)
+		return data.strip()
 
 	def execute(self, cmd):
 		# This program MUST send a newline to the remote system once
@@ -294,6 +309,11 @@ class RemoteExecute:
 		# Echoing the data doubles the time required to put the file.
 		self.fp.write('stty -echo\n')
 
+		# drain the response from the serial buffer
+		junk = self.readuntil_time(1)
+
+		prompt = self.get_prompt()
+
 		# --------------------  self.execute() will NOT work after this point
 		#                       until after 'stty echo'
 
@@ -321,6 +341,9 @@ class RemoteExecute:
 
 			# Show upload status
 			self.progress(sent, data_size)
+
+			# wait for shell prompt before sending next line
+			recv_data = self.readuntil(delim=prompt)
 
 		if self.showprogress:
 			print
