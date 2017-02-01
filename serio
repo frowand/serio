@@ -30,12 +30,19 @@ import sys, os.path, math, time
 import hashlib
 import StringIO
 import uu
+import datetime
 from getopt import GetoptError, getopt as GetOpt
 
 # verbose
 #  1  bytes uploaded/downloaded
 #  2  progress
 verbose = 0
+
+debug = 0
+def time_print(msg):
+	if debug:
+		time_str = datetime.datetime.now().strftime("%H:%M:%S.%f")
+		print "[%s] %s" % (time_str, msg)
 
 # zero always will mean no checksum
 CHECKSUM_NONE   = 0
@@ -110,25 +117,22 @@ class RemoteExecute:
 		data = ""
 
 		if count is not None:
-
 			for i in range(0, count):
 				data += self.fp.read(1)
 				self.progress(len(data), count)
 
 		elif lines is not None:
-
 			for i in range(0, lines):
 				data += self.fp.readline()
 				self.progress(len(data), len(data))
 
 		elif delim is not None:
-
 			while not data.endswith(delim):
 				data += self.fp.read(1)
 				self.progress((len(data)-len(delim)), (len(data)-len(delim)))
 
 			data = data[0:-len(delim)]
-	
+
 		self.progress(len(data), len(data))
 		if self.showprogress > 0:
 			print
@@ -148,13 +152,15 @@ class RemoteExecute:
 		# required before first call of execute(), after this
 		# program begins
 
-		cmd = "#"
+		cmd = "# pbfe"
+		time_print("pbfe: write:" + cmd + "\n")
 		self.fp.write(cmd + "\n")
 
 		# remote system shell echos command, slurp it up
 		cmd_echo = self.fp.readline()
+		time_print("pbfe: cmd_echo=[%s]" % cmd_echo)
 
-		# The probably will not be a prompt, becuase the remote
+		# The probably will not be a prompt, because the remote
 		# shell probably sent it before serio started execution.
 		# Check for the command with carriage return, newline.
 		# If the echoed command does not include this then
@@ -162,6 +168,7 @@ class RemoteExecute:
 		#
 		if not cmd_echo.endswith(cmd + "\r\n"):
 			cmd_echo = self.fp.readline()
+			time_print("pbfe: cmd_echo=[%s]" % cmd_echo)
 
 	def get_prompt(self):
 		self.fp.write("# gp\n")
@@ -201,6 +208,7 @@ class RemoteExecute:
 
 		if self.basic:
 			self.execute("cat '%s' && echo '%s'" % (filename, self.DELIM))
+				
 			data = self.readuntil(delim=self.DELIM)
 
 			# Catting data over a terminal turns all \n's to \r\n's
@@ -275,6 +283,7 @@ class RemoteExecute:
 		junk = self.readuntil_time(1)
 
 		prompt = self.get_prompt()
+		time_print("putfile: prompt='%s'" % prompt)
 
 		# Create/zero the file
 		self._safe_write('echo -ne > %s\n' % filename)
@@ -306,6 +315,7 @@ class RemoteExecute:
 
 			# wait for shell prompt before sending next line
 			recv_data = self.readuntil(delim=prompt)
+			time_print("putfile: received data=[%s]" % recv_data)
 
 		if self.showprogress:
 			print
@@ -316,6 +326,7 @@ class RemoteExecute:
 		return i
 
 	def _safe_write(self, data):
+		time_print("_safe_write:"+data)
 		self.fp.write(data)
 		if data.endswith('\n'):
 			# give the remote system time for disk/flash I/O
