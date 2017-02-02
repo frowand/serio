@@ -13,12 +13,12 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2 of the License, or
 # (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License along
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
@@ -31,7 +31,8 @@ import hashlib
 import StringIO
 import uu
 from getopt import GetoptError, getopt as GetOpt
-import glob, stat
+import glob
+import stat
 
 # verbose
 #  1  bytes uploaded/downloaded
@@ -76,14 +77,13 @@ class RemoteExecute:
 	DATA_PER_WRITE = 100
 	PRINT_INTERVAL = 256
 
-	def __init__(self, fp, io_time=None):
+	def __init__(self, fp):
 		global verbose
 		if callable(fp.read) and callable(fp.write) and callable(fp.readline) and callable (fp.readlines):
 			self.fp           = fp
 			self.current      = 0
 			self.showprogress = verbose > 1
 			self.last_size    = 0
-			self.IO_TIME      = io_time
 		else:
 			raise Exception("bad fp object!")
 
@@ -129,6 +129,10 @@ class RemoteExecute:
 				self.progress((len(data)-len(delim)), (len(data)-len(delim)))
 
 			data = data[0:-len(delim)]
+			# FIXME - all users of delim do this fix after calling readuntil(),
+			#         consider moving it here:
+			#            consume '\n' leftover from readuntil()
+			#            self.fp.readline()
 	
 		self.progress(len(data), len(data))
 		if self.showprogress > 0:
@@ -136,8 +140,8 @@ class RemoteExecute:
 		return data
 
 	def prime_before_first_execute(self):
-		# required before first call of execute(), after this
-		# program begins
+		# required after this program begins,
+		# before first call of execute()
 
 		cmd = "#"
 		self.fp.write(cmd + "\n")
@@ -177,17 +181,16 @@ class RemoteExecute:
 		#
 		# If the echoed command does not include the prompt then
 		# repeat the readline().
-		#
 		if cmd_echo == cmd + "\r\n":
 			cmd_echo = self.fp.readline()
 
 	def getfile(self, filename):
-		# required before calls to execute()
-		self.prime_before_first_execute()
 
 		if self.basic:
 			self.execute("cat '%s' && echo '%s'" % (filename, self.DELIM))
 			data = self.readuntil(delim=self.DELIM)
+			# consume '\n' leftover from readuntil()
+			self.fp.readline()
 
 			# Catting data over a terminal turns all \n's to \r\n's
 			data = data.replace("\r\n", "\n")
@@ -207,6 +210,8 @@ class RemoteExecute:
 
 			self.execute("uuencode '%s' /dev/stdout" % (filename))
 			data = self.readuntil(delim="end")
+			# consume '\n' leftover from readuntil()
+			self.fp.readline()
 
 			# be careful about format of uuencode header
 
@@ -242,89 +247,112 @@ class RemoteExecute:
 			return mode, outfile.getvalue()
 
 
-	def putfile(self, data, filename):
-		i         = 0
-		j         = 0
-		data_size = len(data)
+	def put_file(self, name, destination):
+		global verbose
 
-		# try to ensure at shell prompt
-		# also, required before calls to execute()
-		self.prime_before_first_execute()
-
-		# disable shell echo
-		# Otherwise shell echos from a large --put may still be in
-		# progress when putfile() returns.  Even with disabled echo,
-		# remote system will send a shell prompt each time it receives
-		# a newline, so this does not eliminate all traffic from the
-		# remote system, it just reduces it.
-		self._safe_write('stty -echo\n')
+		self.execute("[ -d '%s' ] ; echo $? " % destination)
+		status = self.fp.readline()
+		if (int(status) == 0):
+			filename = destination + '/' + os.path.basename(name)
+		else:
+			filename = destination
+		local_file = open(name, "rb")
+		data       = local_file.read()
+		sent       = 0
+		data_size  = len(data)
 
 		# Create/zero the file
-		self._safe_write('echo -ne > %s\n' % filename)
+		self.execute('echo -ne > %s' % filename)
+
+		# Disable shell echo
+		# Echoing the data doubles the time required to put the file.
+		self.fp.write('stty -echo\n')
+
+		# --------------------  self.execute() will NOT work after this point
+		#                       until after 'stty echo'
 
 		# Loop through all the bytes in the source data and append them
 		# to the destination file.  Limit size of data in the echo
 		# command to DATA_PER_WRITE characters.
-		while i < data_size:
-			j = 0
+		while sent < data_size:
+			line_size = 0
 			dpart = ''
 
-			while j < self.DATA_PER_WRITE and i < data_size:
-				data_i = data[i]
+			while line_size < self.DATA_PER_WRITE and sent < data_size:
+				data_i = data[sent]
 				odata = ord(data_i)
 				if 'a' <= data_i <= 'z' or 'A' <= data_i <= 'Z' or '0' <= data_i <= '9':
 					dpart += data_i
-					j += 1
+					line_size += 1
 				else:
-					if j + 5 > self.DATA_PER_WRITE:
+					if line_size + 5 > self.DATA_PER_WRITE:
 						break
 					dpart += '\\x%.2X' % int(odata)
-					j += 5
-				i += 1
+					line_size += 5
+				sent += 1
 
-			self._safe_write('echo -ne "%s" >> %s\n' % (dpart, filename))
+			self.fp.write('echo -ne "%s\n" >> %s' % (dpart, filename))
 
 			# Show upload status
-			self.progress(i, data_size)
+			self.progress(sent, data_size)
 
 		if self.showprogress:
 			print
 
 		# enable shell echo
-		self._safe_write('stty echo\n')
+		self.fp.write('\n')
+		self.fp.write('stty echo\n')
+		self.fp.write('\n')
+		# --------------------  self.execute() will work after this point
 
-		return i
+		# Try to synch up
+		# Need to split DELIM into separate parts so that readuntil() will
+		# not stop when it sees the entire value in the command line.
+		self.execute("echo '%s''%s'" % (self.DELIM[0:1], self.DELIM[1:]))
+		data = self.readuntil(delim=self.DELIM)
+		# consume '\n' leftover from readuntil()
+		self.fp.readline()
 
-	def _safe_write(self, data):
-		self.fp.write(data)
-		if data.endswith('\n'):
-			# give the remote system time for disk/flash I/O
-			if self.IO_TIME is not None:
-				time.sleep(self.IO_TIME)
+		local_file.close()
+
+		mode = oct(stat.S_IMODE(os.stat(name).st_mode))
+		# FIXME - check for chmod error
+		self.execute("chmod '%s' '%s' 2> /dev/null" % (mode, destination))
+		if verbose > 0:
+			print 'Uploaded %d bytes from %s to %s' % (sent, name, destination)
 
 	def close(self):
 		self.fp.close()
 
 	def cmd(self, cmd_str, remote_shell=None, timeout=None):
-		# required before calls to execute()
-		self.prime_before_first_execute()
 
 		if remote_shell:
 			# FIXME - add option to choose what shell to use
 			#         have minimally tested sh and bash
-			remote_cmd = 'sh -c \'' + cmd_str + '\' ; r=$?; echo "%s"; echo "${r}"' % self.DELIM
+			#
+			# FIXME - remote_cmd works ok if the remote shell that executes
+			#         remote_cmd is bash, but not if the remote shell that
+			#         executes remote_cmd is busybox sh.
+			#         This appears to be due to sh echoing a '\n' when the
+			#         input line is too long due to a large prompt.A
+			#         For example, if PS1='\w \$ ', and in the directory
+			#         /usr/data/frowand/tmp, then when remote_cmd is:
+			#             sh -c 'ls .' ; r=$?; echo '[[&&serio_cmd_done&&]]'; echo ${r}
+			#         sh splits the input with a '\n' before ' ${r}'
+			#
+			remote_cmd = "sh -c \'" + cmd_str + "\' ; r=$?; echo '%s'; echo ${r}" % self.DELIM
 		else:
-			remote_cmd = cmd_str + ' ; echo "%s"\n' % self.DELIM
+			remote_cmd = cmd_str + " ; echo '%s'\n" % self.DELIM
 		self.execute(remote_cmd)
 
 		# should do this in a thread so we can output while
 		# the data is coming back
 		# FIXME - use timeout here
 		result = self.readuntil(None, None, self.DELIM)
+		# consume '\n' leftover from readuntil()
+		self.fp.readline()
 
 		if remote_shell:
-			# consume '\n' leftover from readuntil()
-			self.fp.readline()
 			remote_status = self.fp.readline()
 			remote_status = remote_status.replace("\r\n", "")
 		else:
@@ -334,58 +362,43 @@ class RemoteExecute:
 		result = result.replace("\r\n", "\n")
 		return remote_status, result
 
-	def recursive_copy(self, src_dir, dst_dir):
-		if src_dir.endswith('/'):
-			if verbose > 0:
-				print src_dir
-			raise Exception("omitting directory: " + src_dir)
-		else:
-			head, tail = os.path.split(src_dir)
-			destin = os.path.join(dst_dir, tail)
-			if verbose > 0:
-				print destin
-			self.execute("mkdir -p '%s' 2> /dev/null" % destin)
-			self.execute("[[ -d '%s' ]] ; echo $? " % destin)
-			data = self.fp.readline()
-			if (int(data) == 0):
-				dst_dir = destin
-			else:
-				raise Exception("unable to create remote directory: " + data)
+	def recursive_put(self, src_dir, dst_dir):
+		head, tail = os.path.split(src_dir)
+		dest = dst_dir + '/' + tail
+		self.execute("mkdir -p '%s' 2> /dev/null" % dest)
+		self.execute("[ -d '%s' ] ; echo $? " % dest)
+		data = self.fp.readline()
+		if (int(data) != 0):
+			raise Exception("unable to create remote directory '%s': " %dest + data)
+		# FIXME - need to set permissions on dir
 
-		for root, dirs, files in os.walk(src_dir):
-			for item in dirs:
-				src_path = os.path.join(root, item)
-				rel_path = os.path.relpath(root, src_dir)
-				if rel_path is not '.':
-					dst_path = os.path.join(dst_dir, os.path.join(rel_path, item))
-				else:
-					dst_path = os.path.join(dst_dir, item)
-				self.cmd('mkdir -p %s' % dst_path)
+		for dirpath, dirs, files in os.walk(src_dir, followlinks=True):
 
-			for item in files:
-				relative = os.path.relpath(root, src_dir)
-				if relative is not '.':
-					dst_path = os.path.join(dst_dir, os.path.join(relative, item))
-				else:
-					dst_path = os.path.join(dst_dir, item)
-				src_path = os.path.join(root, item)
-				size = self.putfile(open(src_path, "rb").read(), dst_path)
-				mode = oct(stat.S_IMODE(os.lstat(src_path).st_mode))
-				self.execute("chmod '%s' '%s' " % (mode, dst_path))
-				if verbose > 0:
-					print 'Uploaded %d bytes from %s to %s' % (size, src_dir, dst_path)
+			for dir in dirs:
+				dst_path = dst_dir + '/' + dirpath + '/' + dir
+				self.execute("mkdir -p '%s' 2> /dev/null" % dst_path)
+				self.execute("[ -d '%s' ] ; echo $? " % dst_path)
+				data = self.fp.readline()
+				if (int(data) != 0):
+					raise Exception("unable to create remote directory '%s': " % dst_path + data)
+				# FIXME - need to set permissions on dir
+
+			for file in files:
+				dst_path = dst_dir + '/' + dirpath + '/' + file
+				src_path = dirpath + '/' + file
+				size = self.put_file(src_path, dst_path)
 
 
 class SerialTerminal(RemoteExecute):
 
-	def __init__(self, basic, checksum, port, baudrate, io_time):
+	def __init__(self, basic, checksum, port, baudrate):
 		self.basic    = basic
 		self.checksum = checksum
 		self.serial   = serial.Serial(port=port, baudrate=baudrate)
 		already_open  = self.serial.isOpen()
 		if not already_open:
 			self.serial.open()
-		RemoteExecute.__init__(self, fp=self.serial, io_time=io_time)
+		RemoteExecute.__init__(self, fp=self.serial)
 
 
 def usage():
@@ -401,21 +414,26 @@ def usage():
    -M, --md5sum                    verify file transfer with md5sum
    -m, --minicom=<name>            Name of the minicom config file to use
    -N, --no-remote-shell           Do not invoke a remote shell to execute --cmd
-   -P, --paranoid                  Assume fragile remote system, be conservative
+   -r, --recurse                   Recursively copy directories
    -s, --source=<file path>        Path to source file
-   -t, --time=<seconds>            delay in _safe_write() [if -P ''' + str(paranoid_time) + ''' else 0]
    -v, --verbose                   Print more information (cumulative)
    -y, --port=<serial port>        Serial port to use [/dev/ttyUSB0]
 
+Notes:
+    - Behaviour of a list of --source files and of --recurse are intended to
+      be as consistent as possible with scp.
+      FIXME - default of scp is verbose, list of files is silenced by '-q'
+              serio is the opposite
+    - Put 'file path' in double quotes when multiple files are transferred
+      This is different syntax than scp and will change if scp style source
+      and destination is implemented.
+
 Side-effects:
-  --put
+  --put --basic
     - shell echo will be enabled on remote system (stty echo)
     - if exception occurs, shell echo may be disabled on
       remote system (remote system can be fixed with command
       "stty echo")
-    - put path in double quotes (especially for wild cards)
-  --get
-    - put path in double quotes (especially for wild cards)
 
 Remote System Dependencies:
   - May hang if the shell prompt is zero bytes long
@@ -427,12 +445,12 @@ Remote System Dependencies:
     --put          :  stty, echo
 
 Known Problems:
+  - file copy (--get and --put)
+    - the entire file is copied into memory before being written out.
   - execute a command (--cmd)
     - will hang for command "bash"
     - will hang for command "exit" (exiting bash)
     - can not be used to login to a shell
-  - Put  with wildcard support
-    - wildcard put dont supports recursive copy -Python 2.7 glob.glob limitation
 
 Return:
   If --cmd and --remote-shell then the exit status of the remote shell.
@@ -445,8 +463,6 @@ Return:
 	'''
 
 
-paranoid_time = 0.1
-
 def main():
 
 	global verbose
@@ -458,16 +474,15 @@ def main():
 	baudrate     = 115200
 	checksum     = CHECKSUM_NONE
 	destination  = None
-	io_time      = None
 	minicom      = None
-	paranoid     = None
 	port         = '/dev/ttyUSB0'
+	recurse      = None
 	remote_shell = 1
 	source       = None
 
 	try:
 		opts, args = GetOpt(sys.argv[1:],
-				    'b:Bc:d:ghMNm:pPs:t:vy:',
+				    'b:Bc:d:ghMNm:prs:vy:',
 				    ['baudrate=',
 				     'basic',
 				     'cmd=',
@@ -477,10 +492,9 @@ def main():
 				     'md5sum',
 				     'minicom=',
 				     'put',
-				     'paranoid',
+				     'recurse',
 				     'no-remote-shell',
 				     'source=',
-				     'time=',
 				     'verbose',
 				     'port=',
 				    ]
@@ -511,22 +525,16 @@ def main():
 			minicom = ParseMinicom(arg)
 		elif opt in ('-p', '--put'):
 			action = 'put'
-		elif opt in ('-P', '--paranoid'):
-			paranoid = 1
 		elif opt in ('-N', '--no-remote-shell'):
 			remote_shell = 0
+		elif opt in ('-r', '--recurse'):
+			recurse = 1
 		elif opt in ('-s', '--source'):
 			source = arg
-		elif opt in ('-t', '--time'):
-			io_time = float(arg)
 		elif opt in ('-v', '--verbose'):
 			verbose += 1
 		elif opt in ('-y', '--port'):
 			port = arg
-
-	if paranoid:
-		if io_time is None:
-			io_time = paranoid_time
 
 	if action is None:
 		print 'ERROR: must specify an action option'
@@ -540,99 +548,83 @@ def main():
 			print 'ERROR: must specify the -s option'
 			sys.exit(1)
 
-		if destination is None or destination == ".":
-			destination = os.path.basename(source)
+		# FIXME - add alternate syntax for '-s' and '-d':
+		#         serio {-g | -p} source ... destination
 
 	if minicom is not None:
 		port     = minicom.port()
 		baudrate = minicom.baudrate()
 
-	sterm = SerialTerminal(basic, checksum, port, baudrate, io_time)
+	sterm = SerialTerminal(basic, checksum, port, baudrate)
+
+	# required before calls to execute()
+	sterm.prime_before_first_execute()
 
 	if action == 'put':
 		try:
-			if "*" in source:
-					print "wildcard"
-					for filename in glob.glob(source):
-						if verbose > 1:
-							print os.path.basename(filename)
-						dest = os.path.join(destination, os.path.basename(filename))
-						if os.path.isdir(filename):
-							if verbose > 1:
-								print "directory for * is ", os.path.basename(filename)
-							dst_path = os.path.join(destination, os.path.basename(filename))
-							sterm.recursive_copy(os.path.basename(filename),  destination)
-						elif os.path.isfile(filename):
-							if verbose > 1:
-								print "filename for * is ", os.path.basename(filename)
-							dest = os.path.join(destination, os.path.basename(filename))
-							size = sterm.putfile(open(filename, "rb").read(), dest)
-							mode = oct(stat.S_IMODE(os.lstat(filename).st_mode))
-							sterm.execute("chmod '%s' '%s'" % (mode, dest))
-							if verbose > 0:
-								print 'Uploaded %d bytes from %s to %s' % (size, filename, dest)
-			elif os.path.isfile(source):
-					if verbose > 1:
-						print "source file is ", source
-					file_name = os.path.basename(source)
-					remote_status, data = sterm.cmd('[[ -d "%s" ]] ; echo $? ' % destination)
-					if (int(data) == 0):
-						destination = os.path.join(destination, file_name)
-					size = sterm.putfile(open(source, "rb").read(), destination)
-					if verbose > 0:
-						print 'Uploaded %d bytes from %s to %s' % (size, source, destination)
-					mode = oct(stat.S_IMODE(os.lstat(source).st_mode))
-					sterm.execute("chmod '%s' '%s' " % (mode, destination))
 
-			elif os.path.isdir(source):
-				if verbose > 1:
-					print "source directory is ", source
-				sterm.recursive_copy(source, destination)
+			# FIXME - source.split() does not handle space inside
+			#         name, even if name is in quotes or space is
+			#         '\' delimited
+
+			# if multiple sources then destination must be a directory
+
+			names = 0
+			directories = 0
+			for name in source.split():
+				# FIXME - glob.glob() not needed if switch to scp
+				#         source and dest style.  In that case, the
+				#         shell will handle wild card expansion.  Same
+				#         for second use of glob.glob() below.
+				for name_glob in glob.glob(name):
+					names += 1
+					if os.path.isdir(name):
+						directories += 1
+
+			if names > 1 or directories:
+
+				if destination is None:
+					destination = "."
+
+				sterm.execute('[ ! -e "%s" ] ; echo $?' % destination)
+				status = sterm.fp.readline()
+				if int(status) == 0:
+					raise Exception(destination + ": No such file or directory")
+
+				sterm.execute('[ ! -d "%s" ] ; echo $?' % destination)
+				status = sterm.fp.readline()
+				if int(status) == 0:
+					raise Exception(destination + ": Not a directory")
+
+			for name in source.split():
+				for name_glob in glob.glob(name):
+
+					if os.path.isdir(name_glob):
+
+						if recurse:
+							sterm.recursive_put(name_glob, destination)
+						else:
+							# follow scp behaviour, do not raise exception
+							print 'ERROR: ' + name_glob + ': not a regular file'
+
+					elif os.path.isfile(name_glob):
+						sterm.put_file(name_glob, destination)
 
 		except Exception, e:
+			# FIXME - scp prefixes with 'scp' instead of ERROR
 			print "ERROR:", e
 			sys.exit(2)
 
 	elif action == 'get':
 		try:
-			if "*" in source:
-				if verbose > 1:
-					print "Wildcard entry"
-				data = sterm.cmd("ls -1 %s " % source)
-				if verbose > 1:
-					print data
-				for line in data.splitlines():
-					if verbose > 1:
-						print line
-					head, tail = os.path.split(line)
-					des = os.path.abspath(destination)
-					des = os.path.join(des, tail)
-					if verbose > 1:
-						print des
-					mode, contents = sterm.getfile(str(line))
-					if len(contents):
-						open(des, "wb").write(contents)
-						if mode != -1:
-							os.chmod(des_file, mode)
-			else:
-				mode, data = sterm.getfile(source)
-				if len(data):
-					des = os.path.abspath(destination)
-					if verbose > 1:
-						print des
-					if os.path.isdir(des):
-						head, tail = os.path.split(source)
-						des_file = os.path.join(des, tail)
-						open(des_file, "wb").write(data)
-						if mode != -1:
-							os.chmod(des_file, mode)
+			mode, data = sterm.getfile(source)
+			if len(data):
+				open(destination, "wb").write(data)
+				if mode != -1:
+					os.chmod(destination, mode)
 
-					else:
-						open(des, "wb").write(data)
-						if mode != -1:
-							os.chmod(des, mode)
 			if verbose > 0:
-				print 'Downloaded %d bytes from %s to %s' % (len(data), source, des)
+				print 'Downloaded %d bytes from %s to %s' % (len(data), source, destination)
 		except Exception, e:
 			print "\nERROR:", e
 			sys.exit(3)
@@ -645,6 +637,7 @@ def main():
 				print data
 		except Exception, e:
 			print "ERROR:", e
+
 	else:
 		print "ERROR: unknown action '%s'" % action
 			
