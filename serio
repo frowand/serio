@@ -344,9 +344,8 @@ class RemoteExecute:
 			destin = os.path.join(dst_dir, tail)
 			if verbose > 0:
 				print destin
-			self.execute("mkdir -p '%s' 2> /dev/null" % destin)
-			self.execute("[[ -d '%s' ]] ; echo $? " % destin)
-			data = self.fp.readline()
+			self.fp.write("mkdir -p '%s' 2> /dev/null \n" % destin)
+			remote_status, data = self.cmd("[[ -d '%s' ]] ; echo $? " % destin)
 			if (int(data) == 0):
 				dst_dir = destin
 			else:
@@ -413,7 +412,7 @@ Side-effects:
     - if exception occurs, shell echo may be disabled on
       remote system (remote system can be fixed with command
       "stty echo")
-    - put path in double quotes (especially for wild cards)
+    - put path in double quotes (especially for wild cards and recursive)
   --get
     - put path in double quotes (especially for wild cards)
 
@@ -551,43 +550,51 @@ def main():
 
 	if action == 'put':
 		try:
-			if "*" in source:
-					print "wildcard"
-					for filename in glob.glob(source):
-						if verbose > 1:
-							print os.path.basename(filename)
-						dest = os.path.join(destination, os.path.basename(filename))
-						if os.path.isdir(filename):
-							if verbose > 1:
-								print "directory for * is ", os.path.basename(filename)
-							dst_path = os.path.join(destination, os.path.basename(filename))
-							sterm.recursive_copy(os.path.basename(filename),  destination)
-						elif os.path.isfile(filename):
-							if verbose > 1:
-								print "filename for * is ", os.path.basename(filename)
-							dest = os.path.join(destination, os.path.basename(filename))
-							size = sterm.putfile(open(filename, "rb").read(), dest)
-							mode = oct(stat.S_IMODE(os.lstat(filename).st_mode))
-							sterm.execute("chmod '%s' '%s'" % (mode, dest))
-							if verbose > 0:
-								print 'Uploaded %d bytes from %s to %s' % (size, filename, dest)
-			elif os.path.isfile(source):
-					if verbose > 1:
-						print "source file is ", source
-					file_name = os.path.basename(source)
-					remote_status, data = sterm.cmd('[[ -d "%s" ]] ; echo $? ' % destination)
-					if (int(data) == 0):
-						destination = os.path.join(destination, file_name)
-					size = sterm.putfile(open(source, "rb").read(), destination)
-					if verbose > 0:
-						print 'Uploaded %d bytes from %s to %s' % (size, source, destination)
-					mode = oct(stat.S_IMODE(os.lstat(source).st_mode))
-					sterm.execute("chmod '%s' '%s' " % (mode, destination))
-
-			elif os.path.isdir(source):
+			source_check = source.split()
+			for source_path in source_check:
 				if verbose > 1:
-					print "source directory is ", source
-				sterm.recursive_copy(source, destination)
+					print source_path
+				if os.path.exists(source_path):
+					if "*" in source_path:
+						if verbose > 1:
+							print "wildcard"
+						for filename in glob.glob(source_path):
+							if verbose > 1:
+								print os.path.basename(filename)
+							dest = os.path.join(destination, os.path.basename(filename))
+							if os.path.isdir(filename):
+								if verbose > 1:
+									print "directory for * is ", os.path.basename(filename)
+								dst_path = os.path.join(destination, os.path.basename(filename))
+								sterm.recursive_copy(os.path.basename(filename),  destination)
+							elif os.path.isfile(filename):
+								if verbose > 1:
+									print "filename for * is ", os.path.basename(filename)
+								dest = os.path.join(destination, os.path.basename(filename))
+								size = sterm.putfile(open(filename, "rb").read(), dest)
+								mode = oct(stat.S_IMODE(os.lstat(filename).st_mode))
+								sterm.execute("chmod '%s' '%s'" % (mode, dest))
+								if verbose > 0:
+									print 'Uploaded %d bytes from %s to %s' % (size, filename, dest)
+
+					elif os.path.isfile(source_path):
+						if verbose > 1:
+							print "source file is ", source_path
+						destin_path = destination
+						file_name = os.path.basename(source_path)
+						remote_status, data = sterm.cmd('[[ -d "%s" ]] ; echo $? ' % destination)
+						if (int(data) == 0):
+							destin_path = os.path.join(destin_path, file_name)
+						size = sterm.putfile(open(source_path, "rb").read(), destin_path)
+						if verbose > 0:
+							print 'Uploaded %d bytes from %s to %s' % (size, source_path, destin_path)
+						mode = oct(stat.S_IMODE(os.lstat(source_path).st_mode))
+						sterm.execute("chmod '%s' '%s' " % (mode, destin_path))
+
+					elif os.path.isdir(source_path):
+						if verbose > 1:
+							print "source directory is ", source_path
+						sterm.recursive_copy(source_path, destination)
 
 		except Exception, e:
 			print "ERROR:", e
@@ -647,7 +654,7 @@ def main():
 			print "ERROR:", e
 	else:
 		print "ERROR: unknown action '%s'" % action
-			
+
 	sterm.close()
 
 	sys.exit(int(exit_status))
