@@ -108,6 +108,13 @@ class RemoteExecute:
 			self.last_size = current
 
 	def readuntil(self, count=None, lines=None, delim=None):
+		# FIXME - consider implications of read timeout
+		#         - case count will return fewer bytes than requested
+		#         - case count will return fewer lines than requested
+		#         - case delim will spin forever
+		#         Should timeout be detected and set a different
+		#         exit code?
+
 		data = ""
 
 		if count is not None:
@@ -415,6 +422,7 @@ def usage():
    -N, --no-remote-shell           Do not invoke a remote shell to execute --cmd
    -r, --recurse                   Recursively copy directories
    -s, --source=<file path>        Path to source file
+   -T, --timeout=<seconds>         Set read timout on the serial port (float)
    -v, --verbose                   Print more information (cumulative)
    -y, --port=<serial port>        Serial port to use [/dev/ttyUSB0]
 
@@ -426,6 +434,9 @@ Notes:
     - Put 'file path' in double quotes when multiple files are transferred
       This is different syntax than scp and will change if scp style source
       and destination is implemented.
+    - --timeout is a big stick.  Setting <seconds> to a small value will result
+      in errors or unstable behaviour.  For --cmd, <seconds> must be long
+      enough to allow the entire command to be echoed.
 
 Side-effects:
   --put --basic
@@ -490,10 +501,10 @@ def main():
 				     'get',
 				     'help',
 				     'md5sum',
+				     'no-remote-shell',
 				     'minicom=',
 				     'put',
 				     'recurse',
-				     'no-remote-shell',
 				     'source=',
 				     'timeout=',
 				     'verbose',
@@ -557,6 +568,24 @@ def main():
 	if minicom is not None:
 		port     = minicom.port()
 		baudrate = minicom.baudrate()
+
+	if timeout == 0:
+
+		# FIXME - add test for minimum reasonable value based on baud
+		#         rate (and maybe length of command).
+		#         execute() must have enough time to be able
+		#         to readline() the echoed command.
+		#
+		# FIXME - --timeout is a big hammer when used as a global
+		#           timeout.  Consider using timeout() to vary
+		#           the value at various points of this program.  For
+		#           example, the value while in execute() could be
+		#           adjusted upwards to account for the length of the
+		#           command string passed for each specific call to
+		#           execute().  [[ sterm.fp.timeout ]]
+
+		print 'ERROR: "--timeout 0" will result in incorrect behaviour'
+		sys.exit(1)
 
 	sterm = SerialTerminal(basic, checksum, port, baudrate, timeout)
 
