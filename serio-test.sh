@@ -22,7 +22,6 @@ usage: ${script_name} [-v] [--debug] [-h] [-nc]
    -h, -help, --help          Show help
    -nc                        Don't clean up test files
    -s, --sleep <seconds>      Time to sleep between --get and --put tests [0.0]
-   -t, --time <seconds>      *Delay in _safe_write()
    -T, --timeout <seconds>   *Timeout for serial port I/O operations
    -y, --port <serial port>  *Serial port to use [/dev/ttyUSB0]
    -R, --remote-dir <dir>     Directory on remote system to put files into [.]
@@ -91,13 +90,6 @@ while [ $# -gt 0 ] ; do
 			shift
 			SLEEP="sleep $1"
 			shift
-			;;
-
-		-t | --time )
-			shift
-			TIME="-t $1"
-			shift
-			verbose=1
 			;;
 
 		-T | --timeout )
