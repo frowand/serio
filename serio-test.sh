@@ -43,7 +43,6 @@ unset BASIC
 unset SERIAL_DEV
 unset PARANOID
 unset SLEEP
-unset TIME
 unset TIMEOUT
 
 do_cleanup=1
@@ -155,7 +154,7 @@ for k in $(seq ${numfiles}) ; do
 done
 
 
-SERIO_ARGS="$SERIAL_DEV $PARANOID $BASIC $TIME $TIMEOUT"
+SERIO_ARGS="$SERIAL_DEV $PARANOID $BASIC $TIMEOUT"
 
 # shell builtin 'time' does not recognize -f
 TIME="/usr/bin/time"
