@@ -20,7 +20,7 @@ usage: ${script_name} [-v] [--debug] [-h] [-nc]
    --debug                    Print each shell line as it is executed
    -F, --numfiles <count>     Number of random data test files
    -h, -help, --help          Show help
-   -nc                        Don't clean up test files
+   --nc                       Don't clean up test files
    -s, --sleep <seconds>      Time to sleep between --get and --put tests [0.0]
    -T, --timeout <seconds>   *Timeout for serial port I/O operations
    -y, --port <serial port>  *Serial port to use [/dev/ttyUSB0]
@@ -163,6 +163,12 @@ TIME="/usr/bin/time"
 # respect $PATH
 SERIO=$( which serio )
 
+# if serio is not on the PATH, then try using it from 
+# the current directory.  This way, even if serio is
+# not installed, there's a chance that serio-test.sh will work
+if [ -z "${SERIO}" ] ; then
+	SERIO=./serio
+fi
 
 vecho "remote-dir = ${remote_dir}"
 vecho "FILE_LIST  = ${FILE_LIST}"
