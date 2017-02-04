@@ -298,7 +298,7 @@ class RemoteExecute:
 					line_size += 5
 				sent += 1
 
-			self.fp.write('echo -ne "%s\n" >> %s' % (dpart, filename))
+			self.fp.write('echo -ne \"%s\" >> %s\n' % (dpart, filename))
 
 			# Show upload status
 			self.progress(sent, data_size)
@@ -565,6 +565,9 @@ def main():
 		# FIXME - add alternate syntax for '-s' and '-d':
 		#         serio {-g | -p} source ... destination
 
+		if destination is None:
+			destination = "."
+
 	if minicom is not None:
 		port     = minicom.port()
 		baudrate = minicom.baudrate()
@@ -614,9 +617,6 @@ def main():
 						directories += 1
 
 			if names > 1 or directories:
-
-				if destination is None:
-					destination = "."
 
 				sterm.execute('[ ! -e "%s" ] ; echo $?' % destination)
 				status = sterm.fp.readline()
