@@ -156,14 +156,31 @@ class RemoteExecute:
 		# remote system shell echos command, slurp it up
 		cmd_echo = self.fp.readline()
 
-		# The probably will not be a prompt, becuase the remote
-		# shell probably sent it before serio started execution.
-		# Check for the command with carriage return, newline.
-		# If the echoed command does not include this then
-		# repeat the readline().
+		### FIXME - this readline() should not be needed if the
+		### 'Try to synch up' is done here
+		## There probably will not be a prompt, becuase the remote
+		## shell probably sent it before serio started execution.
+		## Check for the command with carriage return, newline.
+		## If the echoed command does not include this then
+		## repeat the readline().
+		##
+		#if not cmd_echo.endswith(cmd + "\r\n"):
+		#	cmd_echo = self.fp.readline()
+
+		# If serio is run quickly back to back then there might be
+		# some remaining cruft to clear out.  This problem was
+		# detected with:
+		#    for k in `seq 1 10` ; do serio -p -s file_1 -y /dev/ttyACM2 ; serio -p -s file_1 -y /dev/ttyACM2 ; done
+		# The resulting error is: ERROR: invalid literal for int() with base 10: "root@beaglebone:~# [ -d '.' ] ; echo $? \r\n"
 		#
-		if not cmd_echo.endswith(cmd + "\r\n"):
-			cmd_echo = self.fp.readline()
+		# Try to synch up
+		# Need to split DELIM into separate parts so that readuntil() will
+		# not stop when it sees the entire value in the command line.
+		self.execute("echo '%s''%s'" % (self.DELIM[0:1], self.DELIM[1:]))
+		data = self.readuntil(delim=self.DELIM)
+		# consume '\n' leftover from readuntil()
+		self.fp.readline()
+
 
 	def execute(self, cmd):
 		# This program MUST send a newline to the remote system once
@@ -188,6 +205,8 @@ class RemoteExecute:
 		#
 		# If the echoed command does not include the prompt then
 		# repeat the readline().
+		#
+		# FIXME - this does not work for remote shell: busybox sh
 		if cmd_echo == cmd + "\r\n":
 			cmd_echo = self.fp.readline()
 
@@ -275,6 +294,12 @@ class RemoteExecute:
 		# Echoing the data doubles the time required to put the file.
 		self.fp.write('stty -echo\n')
 
+		# do not wait when trying to consume prompt
+		saved_timeout = self.fp.timeout
+		self.fp.timeout = 0
+		# FIXME - hack for beaglebone black angstrom
+		# self.fp.timeout = 0.01
+
 		# --------------------  self.execute() will NOT work after this point
 		#                       until after 'stty echo'
 
@@ -300,6 +325,12 @@ class RemoteExecute:
 
 			self.fp.write('echo -ne \"%s\" >> %s\n' % (dpart, filename))
 
+			# consume prompt, best effort
+			# any trailing data will get swept up in the synch
+			# at 'Try to synch up'
+			# FIXME - arbitrary data size
+			self.fp.read(1000)
+
 			# Show upload status
 			self.progress(sent, data_size)
 
@@ -310,6 +341,9 @@ class RemoteExecute:
 		self.fp.write('\n')
 		self.fp.write('stty echo\n')
 		self.fp.write('\n')
+
+		self.fp.timeout = saved_timeout
+
 		# --------------------  self.execute() will work after this point
 
 		# Try to synch up
