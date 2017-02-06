@@ -603,8 +603,12 @@ def main():
 			destination = "."
 
 	if minicom is not None:
-		port     = minicom.port()
-		baudrate = minicom.baudrate()
+		m_port     = minicom.port()
+		m_baudrate = minicom.baudrate()
+		if not m_port is None:
+			port     = m_port
+		if not m_baudrate is None:
+			baudrate = m_baudrate
 
 	if timeout == 0:
 
