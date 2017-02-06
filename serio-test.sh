@@ -95,14 +95,12 @@ while [ $# -gt 0 ] ; do
 			shift
 			TIMEOUT="-T $1"
 			shift
-			verbose=1
 			;;
 
 		-R | --remote-dir )
 			shift
 			remote_dir="$1"
 			shift
-			verbose=1
 			;;
 
 		-v )
@@ -114,7 +112,6 @@ while [ $# -gt 0 ] ; do
 			shift
 			SERIAL_DEV="-y $1"
 			shift
-			verbose=1
 			;;
 
 		* )
