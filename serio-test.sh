@@ -14,20 +14,17 @@ function vecho {
 function usage
 {
 echo "
-usage: ${script_name} [-v] [--debug] [-h] [-nc]
+usage: ${script_name} [-v] [--debug] [-h] [-nc] serial_port
 
    -B, --basic               *Use basic (minimal) remote system commands
-  --debug                     Print each shell line as it is executed
-   -F, --numfile <count>      Number of random data test files
+   --debug                    Print each shell line as it is executed
+   -F, --numfiles <count>     Number of random data test files
    -h, -help, --help          Show help
-   -nc                        Don't clean up test files
+   --nc                       Don't clean up test files
    -s, --sleep <seconds>      Time to sleep between --get and --put tests [0.0]
-   -t, --time <seconds>      *Delay in _safe_write()
-   -y, --port <serial port>  *Serial port to use [/dev/ttyUSB0]
-  --remote-dir <dir>          Directory on remote system to put files into [.]
+   -T, --timeout <seconds>   *Read timout on the serial port (float)
+   -R, --remote-dir <dir>     Directory on remote system to put files into [.]
    -v                         Be verbose
-
-  * Sets a serio command line option
 
 " >&2
 }
@@ -40,14 +37,15 @@ script_name=`basename $0`
 #PARANOID="-P"
 
 unset BASIC
-unset SERIAL_DEV
 unset PARANOID
+unset PORT
+unset SERIAL_DEV
 unset SLEEP
-unset TIME
+unset TIMEOUT
 
 do_cleanup=1
 help=0
-numfile=1
+numfiles=2
 remote_dir="."
 verbose=0
 while [ $# -gt 0 ] ; do
@@ -64,9 +62,9 @@ while [ $# -gt 0 ] ; do
 			set -x
 			;;
 
-		-F | --numfile )
+		-F | --numfiles )
 			shift
-			numfile=$1
+			numfiles=$1
 			shift
 			;;
 
@@ -91,18 +89,16 @@ while [ $# -gt 0 ] ; do
 			shift
 			;;
 
-		-t | --time )
+		-T | --timeout )
 			shift
-			TIME="-t $1"
+			TIMEOUT="-T $1"
 			shift
-			verbose=1
 			;;
 
-		-T | --remote-dir )
+		-R | --remote-dir )
 			shift
 			remote_dir="$1"
 			shift
-			verbose=1
 			;;
 
 		-v )
@@ -110,11 +106,10 @@ while [ $# -gt 0 ] ; do
 			verbose=1
 			;;
 
-		-y | --port )
-			shift
-			SERIAL_DEV="-y $1"
-			shift
-			verbose=1
+		-* )
+			echo "ERROR: unrecognized option: $1"                >&2
+			exit 1
+			break
 			;;
 
 		* )
@@ -124,6 +119,11 @@ while [ $# -gt 0 ] ; do
 		esac
 done
 
+if [ $# -gt 0 ] ; then
+	PORT="$1"
+	SERIAL_DEV="-y /dev/$1"
+	shift
+fi
 
 if [ $help -eq 1 ] ; then
 	usage
@@ -131,8 +131,12 @@ if [ $help -eq 1 ] ; then
 fi
 
 if [ $# -ne 0 ] ; then
-	echo "ERROR: unexpected parameter:"                                  >&2
-	echo "       $@"                                                     >&2
+	echo "ERROR: unexpected parameter: $@"                               >&2
+	exit 1
+fi
+
+if [ "${PORT}" == "" ] ; then
+	echo "ERROR: argument 'serial_port' is required"                     >&2
 	exit 1
 fi
 
@@ -148,27 +152,46 @@ fi
 tmp_dir=$( mktemp --tmpdir -d serio-test.XXXXXXXXXX )
 
 
-FILE_LIST="file_1"
-for k in $( seq 2 $(( ${numfile} + 1 )) ) ; do
+FILE_LIST=""
+for k in $(seq ${numfiles}) ; do
 	FILE_LIST="${FILE_LIST} file_${k}"
 done
 
 
-SERIO_ARGS="$SERIAL_DEV $PARANOID $BASIC $TIME"
+SERCP_ARGS="$PARANOID $BASIC $TIMEOUT"
+SERSH_ARGS="$PARANOID $BASIC $TIMEOUT"
 
 # shell builtin 'time' does not recognize -f
 TIME="/usr/bin/time"
 
 # respect $PATH
+SERCP=$( which sercp )
 SERIO=$( which serio )
+SERSH=$( which sersh )
 
+# if serio is not on the PATH, then try using it from 
+# the current directory.  This way, even if serio is
+# not installed, there's a chance that serio-test.sh will work
+if [ -z "${SERCP}" ] ; then
+	SERCP=./sercp
+fi
+
+if [ -z "${SERIO}" ] ; then
+	SERIO=./serio
+fi
+
+if [ -z "${SERSH}" ] ; then
+	SERSH=./sersh
+fi
 
 vecho "remote-dir = ${remote_dir}"
 vecho "FILE_LIST  = ${FILE_LIST}"
 vecho "SERIAL_DEV = ${SERIAL_DEV}"
 vecho "SERIO_ARGS = ${SERIO_ARGS}"
 vecho "SLEEP      = ${SLEEP}"
+vecho "SERCP      = ${SERCP}"
 vecho "SERIO      = ${SERIO}"
+vecho "SERSH      = ${SERSH}"
 
 
 #########################
@@ -177,7 +200,7 @@ vecho "SERIO      = ${SERIO}"
 echo "Creating files..."
 
 # make a super-small, super-safe file for file1
-echo "this is the first test file for serio" >file1
+echo "this is the first test file for serio" >${tmp_dir}/file_short
 
 if [ $verbose -gt 0 ] ; then
 	ddout="/dev/stdout"
@@ -193,6 +216,9 @@ for f in ${FILE_LIST} ; do
 	size=$(( $size * 10 ))
 	i=$(( $i + 1 ))
 done
+
+FILE_LIST="file_short ${FILE_LIST}"
+
 
 #########################
 # test put and get
@@ -218,9 +244,11 @@ echo "Putting files: $FILE_LIST"
 for f in $FILE_LIST ; do
 	f_full="${tmp_dir}/$f"
 	vecho "Putting file ${f}"
-	${TIME} -f "      time for put of $f: %E" $SERIO $SERIO_ARGS -p --source=$f_full --destination="${remote_dir}/$f" ;
+	${TIME} -f "      time for put of $f: %E" \
+		$SERCP $SERCP_ARGS $f_full "${PORT}:${remote_dir}/$f"
 	$SLEEP
 done
+
 
 ## get some files
 
@@ -229,7 +257,8 @@ for f in $FILE_LIST ; do
 	ret_f="${f}-return"
 	ret_f_full="${tmp_dir}/${ret_f}"
 	vecho "  Getting file ${f} (into $ret_f)"
-	${TIME} -f "      time for get of $f: %E" $SERIO $SERIO_ARGS -g --source="${remote_dir}/$f" --destination=$ret_f_full ;
+	${TIME} -f "      time for get of $f: %E" \
+		$SERCP $SERCP_ARGS "${PORT}:${remote_dir}/$f" $ret_f_full
 	$SLEEP
 
 	if [ -e "$ret_f_full" ] ; then
@@ -269,25 +298,44 @@ done
 
 #########################
 # test some commands
-#$SERIO $SERIO_ARGS -c "echo hello there!"
+#$SERSH $SERSH_ARGS -c "echo hello there!"
 
 echo "Executing some commands"
 vecho "     Execute 'ls -l $remote_dir'"
-$SERIO $SERIO_ARGS -c "ls -l $remote_dir"
+$SERSH $SERSH_ARGS ${PORT} "ls -l $remote_dir"
 
 vecho "     Execute 'echo hello there'"
-res1=$($SERIO $SERIO_ARGS -c "echo hello there")
-exp1=$'hello there'
+res=$($SERSH $SERSH_ARGS ${PORT} "echo hello there")
+rcode=$?
+exp=$'hello there'
 
-echo "expected  : [$exp1]"
-echo "got result: [$res1]"
+echo "expected  : [$exp], rcode=[0]"
+echo "got result: [$res], rcode=[$rcode]"
 
 desc="$test_num - run 'echo hello there' on remote"
-if [ "$res1" = "$exp1" ] ; then
+if [ "$res" = "$exp" -a "$rcode" = "0" ] ; then
 	echo "ok $desc"
 else
 	echo "not ok $desc"
 fi
+test_num=$(( $test_num + 1 ))
+
+vecho "     Execute 'echo foo ; false'"
+res=$($SERSH $SERSH_ARGS ${PORT} "echo foo ; false")
+rcode=$?
+exp=$'foo'
+expcode=1
+
+echo "expected  : [$exp], rcode=[$expcode]"
+echo "got result: [$res], rcode=[$rcode]"
+
+desc="$test_num - run 'echo foo ; false' on remote"
+if [ "$res" = "$exp" -a "$rcode" = "$expcode" ] ; then
+	echo "ok $desc"
+else
+	echo "not ok $desc"
+fi
+test_num=$(( $test_num + 1 ))
 
 #########################
 # test cleanup
@@ -295,7 +343,7 @@ fi
 function cleanup {
 	# remove test files
 
-	$SERIO $SERIAL_DEV -c "rm ${remote_dir}/file_[1-9]*"
+	$SERSH ${PORT} "rm ${remote_dir}/file_[1-9]* ${remote_dir}/file_short"
 
 	rm -r ${tmp_dir}
 }
