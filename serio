@@ -30,7 +30,7 @@ import sys, os.path, math, time
 import hashlib
 import StringIO
 import uu
-from getopt import GetoptError, getopt as GetOpt
+import getopt
 import glob
 import stat
 
@@ -294,12 +294,6 @@ class RemoteExecute:
 		# Echoing the data doubles the time required to put the file.
 		self.fp.write('stty -echo\n')
 
-		# do not wait when trying to consume prompt
-		saved_timeout = self.fp.timeout
-		self.fp.timeout = 0
-		# FIXME - hack for beaglebone black angstrom
-		# self.fp.timeout = 0.01
-
 		# --------------------  self.execute() will NOT work after this point
 		#                       until after 'stty echo'
 
@@ -325,12 +319,6 @@ class RemoteExecute:
 
 			self.fp.write('echo -ne \"%s\" >> %s\n' % (dpart, filename))
 
-			# consume prompt, best effort
-			# any trailing data will get swept up in the synch
-			# at 'Try to synch up'
-			# FIXME - arbitrary data size
-			self.fp.read(1000)
-
 			# Show upload status
 			self.progress(sent, data_size)
 
@@ -341,8 +329,6 @@ class RemoteExecute:
 		self.fp.write('\n')
 		self.fp.write('stty echo\n')
 		self.fp.write('\n')
-
-		self.fp.timeout = saved_timeout
 
 		# --------------------  self.execute() will work after this point
 
@@ -441,26 +427,69 @@ class SerialTerminal(RemoteExecute):
 		RemoteExecute.__init__(self, fp=self.serial)
 
 
-def usage():
-	print '\nUsage: %s [OPTIONS]' % os.path.basename(sys.argv[0])
+def usage_sersh():
+
+	print '\n'
+	print '       %s [OPTIONS] [user @]hostname command' % os.path.basename(sys.argv[0])
 	print '''
    -b, --baudrate=<baud>           Serial port baud rate [115200]
    -B, --basic                     Use basic (minimal) remote system commands
    -d, --destination=<file path>   Path to destination file
-   -g, --get                       Get a file from the remote system
    -h, --help                      Show help
-   -p, --put                       Put a file to the remote system
-   -c, --cmd="command with args"   Execute a command on the remote system
    -M, --md5sum                    verify file transfer with md5sum
    -m, --minicom=<name>            Name of the minicom config file to use
    -N, --no-remote-shell           Do not invoke a remote shell to execute --cmd
    -r, --recurse                   Recursively copy directories
-   -s, --source=<file path>        Path to source file
    -T, --timeout=<seconds>         Set read timout on the serial port (float)
    -v, --verbose                   Print more information (cumulative)
-   -y, --port=<serial port>        Serial port to use [/dev/ttyUSB0]
 
 Notes:
+    - user is ignored
+    - --timeout is a big stick.  Setting <seconds> to a small value will result
+      in errors or unstable behaviour.  <seconds> must be long enough to allow
+      the entire command to be echoed.
+
+Remote System Dependencies:
+  - May hang if the shell prompt is zero bytes long
+  - Remote system shell echos \\r\\n at end of command input
+
+Known Problems:
+  - will hang for command "bash"
+  - will hang for command "exit" (exiting bash)
+  - can not be used to login to a shell
+
+Return:
+  If --remote-shell then the exit status of the remote shell.
+  Otherwise:
+     0  no error
+     1  --help or argument error
+
+	'''
+
+
+def usage_sercp():
+	print '\n'
+	print 'Usage: %s [OPTIONS] [[user1@]host1:]file1 ... [[user2@]host2:]file2' % os.path.basename(sys.argv[0])
+	print '''
+   -b, --baudrate=<baud>           Serial port baud rate [115200]
+   -B, --basic                     Use basic (minimal) remote system commands
+   -h, --help                      Show help
+   -M, --md5sum                    verify file transfer with md5sum
+   -m, --minicom=<name>            Name of the minicom config file to use
+   -r, --recurse                   Recursively copy directories
+   -T, --timeout=<seconds>         Set read timout on the serial port (float)
+   -v, --verbose                   Print more information (cumulative)
+
+Notes:
+    - user1 and user2 are ignored
+    - scp distinguished a filename containing ":" from a host by finding
+      a "/" before the ":".  This means that "host1" and "host2" may not
+      contains a "/".  Due to this constraint "host1" and "host2" are device
+      names relative to "/dev/".
+    - All source files ("file1 ...") must be on the same host.
+    - The source files ("file1 ...") and the destination location ("file2")
+      must be on different hosts.  Local copies and copies between remote
+      hosts are not supported.
     - Behaviour of a list of --source files and of --recurse are intended to
       be as consistent as possible with scp.
       FIXME - default of scp is verbose, list of files is silenced by '-q'
@@ -481,37 +510,93 @@ Side-effects:
 
 Remote System Dependencies:
   - May hang if the shell prompt is zero bytes long
-  - Remote system shell echos \\r\\n at end of command input
   - Remote system shell built-ins or programs:
-    --get --basic  :  cat, echo
-    --get          :                uuencode
-    --get --md5sum :  stat, md5sum, uuencode
-    --put          :  stty, echo
+    file get --basic  :  cat, echo
+    file get          :                uuencode
+    file get --md5sum :  stat, md5sum, uuencode
+    file put          :  stty, echo
 
 Known Problems:
-  - file copy (--get and --put)
-    - the entire file is copied into memory before being written out.
-  - execute a command (--cmd)
-    - will hang for command "bash"
-    - will hang for command "exit" (exiting bash)
-    - can not be used to login to a shell
+  - the entire file is copied into memory before being written out.
 
 Return:
-  If --cmd and --remote-shell then the exit status of the remote shell.
-  Otherwise:
      0  no error
      1  --help or argument error
-     2  --put error
-     3  --get error
+     2  file put error
+     3  file get error
 
 	'''
 
 
+def usage():
+	if os.path.basename(sys.argv[0]) == 'sersh':
+		usage_sersh()
+	if os.path.basename(sys.argv[0]) == 'sercp':
+		usage_sercp()
+
+
 def main():
+
+	def parse_arg_for_files(args):
+		host = None
+		files = []
+
+		for arg in args[0:len(args)]:
+			# print arg
+
+			# from usage:
+			# - host1 and host2 are device names relative to /dev/
+			# This is because scp allows a file name to contain
+			# a ':'.  scp determines that [host1] or [host2] is
+			# a file instead of a host because there is a '/'
+			# before the ':'.  For serio to follow this rule,
+			# [host1] and [host2] can not contain a '/', so
+			# serio requires [host1] and [host2] to be located
+			# in '/dev/'.  The '/dev/' portion of [host1] and
+			# [host2] is implied.
+
+			host_in_arg = 1
+			if ':' in arg and '/' in arg:
+				index_colon = arg.find(':')
+				index_slash = arg.find('/')
+				if index_slash < index_colon:
+					host_in_arg = 0
+			elif not ':' in arg:
+				host_in_arg = 0
+
+			if host_in_arg:
+				host_end = arg.find(':')
+				file_start = host_end + 1
+				if '@' in arg:
+					# strip off leading [user@]
+					host_start = arg.find('@') + 1
+				else:
+					host_start = 0
+				new_host = arg[host_start:host_end]
+				if not '/' in new_host:
+					new_host = '/dev/' + new_host
+				if host is None:
+					host = new_host
+				elif host != new_host:
+					print 'ERROR: all source files must be on the same host'
+					sys.exit(1)
+				file = arg[file_start:]
+				files.append(file)
+
+			else:
+				if host is not None:
+					print 'ERROR: all source files must be on the same host'
+					sys.exit(1)
+				file = arg
+				files.append(file)
+
+		return host, files
+
 
 	global verbose
 
-	exit_status = 0
+	exit_status  = 0
+	def_port     = '/dev/ttyUSB0'
 
 	action       = None
 	basic        = None
@@ -520,24 +605,22 @@ def main():
 	destination  = None
 	timeout      = None
 	minicom      = None
-	port         = '/dev/ttyUSB0'
+	port         = None
 	recurse      = None
 	remote_shell = 1
 	source       = None
 
 	try:
-		opts, args = GetOpt(sys.argv[1:],
-				    'b:Bc:d:ghMNm:prs:T:vy:',
+		opts, args = getopt.getopt(sys.argv[1:],
+				    'b:Bc:d:hMNm:rs:T:vy:',
 				    ['baudrate=',
 				     'basic',
 				     'cmd=',
 				     'destination=',
-				     'get',
 				     'help',
 				     'md5sum',
 				     'no-remote-shell',
 				     'minicom=',
-				     'put',
 				     'recurse',
 				     'source=',
 				     'timeout=',
@@ -545,7 +628,7 @@ def main():
 				     'port=',
 				    ]
 				   )
-	except GetoptError, e:
+	except getopt.GetoptError, e:
 		print 'Usage error:', e
 		print 'Help available via: \'%s -h\'' % os.path.basename(sys.argv[0])
 		sys.exit(1)
@@ -560,8 +643,6 @@ def main():
 			cmd_str = arg
 		elif opt in ('-d', '--destination'):
 			destination = arg
-		elif opt in ('-g', '--get'):
-			action = 'get'
 		elif opt in ('-h', '--help'):
 			usage()
 			sys.exit(1)
@@ -569,8 +650,6 @@ def main():
 			checksum = CHECKSUM_MD5SUM
 		elif opt in ('-m', '--minicom'):
 			minicom = ParseMinicom(arg)
-		elif opt in ('-p', '--put'):
-			action = 'put'
 		elif opt in ('-N', '--no-remote-shell'):
 			remote_shell = 0
 		elif opt in ('-r', '--recurse'):
@@ -584,29 +663,87 @@ def main():
 		elif opt in ('-y', '--port'):
 			port = arg
 
+
+	if os.path.basename(sys.argv[0]) == 'sersh':
+		action = 'cmd'
+		tmp_cmd_str = None
+		for arg in args:
+			if tmp_cmd_str is None:
+				tmp_cmd_str = arg
+			else:
+				tmp_cmd_str = tmp_cmd_str + ' ' + arg
+
+		host_end = tmp_cmd_str.find(' ')
+		if '@' in tmp_cmd_str:
+			# strip off leading [user@]
+			host_start = tmp_cmd_str.find('@') + 1
+		else:
+			host_start = 0
+		host = tmp_cmd_str[host_start:host_end]
+		if '/' in host:
+			port = host
+		else:
+			port = '/dev/' + host
+		cmd_str = tmp_cmd_str[host_end:]
+
+	elif action is None:
+
+		if len(args) < 2:
+			print 'ERROR: file1 and file2 required'
+			sys.exit(1)
+
+		src_host, source = parse_arg_for_files(args[0:len(args) - 1])
+		dst_host, dst    = parse_arg_for_files(args[len(args) - 1:])
+
+		if src_host:
+			if dst_host:
+				print 'ERROR: file1 xor file2 must be remote'
+				sys.exit(1)
+			action = 'get'
+			port = src_host
+
+		# zzz there must be a more elegent way to do this:
+		# way (1)
+		# doing it this way results in hang during file get in
+		# serio-test.sh ttyUSB0
+		#     destination = dst[0:1]
+		# way (2)
+		# this works
+		for x in dst[0:1]:
+			destination = x
+		if destination == '':
+			destination = '.'
+		if dst_host:
+			if src_host:
+				print 'ERROR: file1 xor file2 must be remote'
+				sys.exit(1)
+			action = 'put'
+			port = dst_host
+
+	elif len(args) > 0:
+		print 'ERROR: unrecognized parameters'
+		sys.exit(0)
+
+
 	if action is None:
-		print 'ERROR: must specify an action option'
-		print '   --cmd'
-		print '   --get'
-		print '   --put'
+		print 'ERROR: must specify either a copy or --cmd'
 		sys.exit(1)
 
 	if action in ['get','put']:
-		if not source:
-			print 'ERROR: must specify the -s option'
-			sys.exit(1)
-
-		# FIXME - add alternate syntax for '-s' and '-d':
-		#         serio {-g | -p} source ... destination
-
 		if destination is None:
 			destination = "."
 
 	if minicom is not None:
-		m_port     = minicom.port()
+
+		m_port = minicom.port()
+		if port is None:
+			port = m_port
+		else:
+			if port != m_port:
+				print 'ERROR: host in filespec does not match port from --minicom'
+				sys.exit(1)
+
 		m_baudrate = minicom.baudrate()
-		if not m_port is None:
-			port     = m_port
 		if not m_baudrate is None:
 			baudrate = m_baudrate
 
@@ -628,6 +765,9 @@ def main():
 		print 'ERROR: "--timeout 0" will result in incorrect behaviour'
 		sys.exit(1)
 
+	if port is None:
+		port = def_port
+
 	sterm = SerialTerminal(basic, checksum, port, baudrate, timeout)
 
 	# required before calls to execute()
@@ -636,23 +776,17 @@ def main():
 	if action == 'put':
 		try:
 
-			# FIXME - source.split() does not handle space inside
-			#         name, even if name is in quotes or space is
-			#         '\' delimited
+			# FIXME - need to handle space inside name, either with
+			#         quotes of '\' delimeter
 
 			# if multiple sources then destination must be a directory
 
 			names = 0
 			directories = 0
-			for name in source.split():
-				# FIXME - glob.glob() not needed if switch to scp
-				#         source and dest style.  In that case, the
-				#         shell will handle wild card expansion.  Same
-				#         for second use of glob.glob() below.
-				for name_glob in glob.glob(name):
-					names += 1
-					if os.path.isdir(name):
-						directories += 1
+			for name in source:
+				names += 1
+				if os.path.isdir(name):
+					directories += 1
 
 			if names > 1 or directories:
 
@@ -666,35 +800,40 @@ def main():
 				if int(status) == 0:
 					raise Exception(destination + ": Not a directory")
 
-			for name in source.split():
-				for name_glob in glob.glob(name):
+			for name in source:
 
-					if os.path.isdir(name_glob):
+				if os.path.isdir(name):
 
-						if recurse:
-							sterm.recursive_put(name_glob, destination)
-						else:
-							# follow scp behaviour, do not raise exception
-							print 'ERROR: ' + name_glob + ': not a regular file'
+					if recurse:
+						sterm.recursive_put(name, destination)
+					else:
+						# follow scp behaviour, do not raise exception
+						print 'ERROR: ' + name + ': not a regular file'
 
-					elif os.path.isfile(name_glob):
-						sterm.put_file(name_glob, destination)
+				elif os.path.isfile(name):
+					sterm.put_file(name, destination)
 
 		except Exception, e:
-			# FIXME - scp prefixes with 'scp' instead of ERROR
 			print "ERROR:", e
 			sys.exit(2)
 
 	elif action == 'get':
 		try:
-			mode, data = sterm.getfile(source)
-			if len(data):
-				open(destination, "wb").write(data)
-				if mode != -1:
-					os.chmod(destination, mode)
+			# FIXME - implement multi-file get
+			if len(source) > 1:
+				raise Exception('multi-file get not implemented')
 
-			if verbose > 0:
-				print 'Downloaded %d bytes from %s to %s' % (len(data), source, destination)
+			for src in source:
+				mode, data = sterm.getfile(src)
+				if len(data):
+					open(destination, "wb").write(data)
+					if mode != -1:
+						os.chmod(destination, mode)
+
+				if verbose > 0:
+					print 'Downloaded %d bytes from %s to %s' % (len(data), src, destination)
+				mode, data = sterm.getfile(src)
+
 		except Exception, e:
 			print "\nERROR:", e
 			sys.exit(3)
