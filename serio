@@ -452,17 +452,14 @@ class SerialTerminal(RemoteExecute):
 
 def usage_sersh():
 
-	print '\n'
-	print '       %s [OPTIONS] [user @]hostname command' % os.path.basename(sys.argv[0])
+	print
+	print 'Usage: %s [OPTIONS] [user @]hostname command' % os.path.basename(sys.argv[0])
 	print '''
    -b, --baudrate=<baud>           Serial port baud rate [115200]
    -B, --basic                     Use basic (minimal) remote system commands
-   -d, --destination=<file path>   Path to destination file
    -h, --help                      Show help
-   -M, --md5sum                    verify file transfer with md5sum
    -m, --minicom=<name>            Name of the minicom config file to use
    -N, --no-remote-shell           Do not invoke a remote shell to execute --cmd
-   -r, --recurse                   Recursively copy directories
    -T, --timeout=<seconds>         Set read timout on the serial port (float)
    -v, --verbose                   Print more information (cumulative)
 
@@ -491,7 +488,8 @@ Return:
 
 
 def usage_sercp():
-	print '\n'
+
+	print
 	print 'Usage: %s [OPTIONS] [[user1@]host1:]file1 ... [[user2@]host2:]file2' % os.path.basename(sys.argv[0])
 	print '''
    -b, --baudrate=<baud>           Serial port baud rate [115200]
