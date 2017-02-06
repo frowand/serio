@@ -413,6 +413,7 @@ class RemoteExecute:
 
 	def recursive_put(self, src_dir, dst_dir):
 		head, tail = os.path.split(src_dir)
+		head += '/'
 		dest = dst_dir + '/' + tail
 		self.execute("mkdir -p '%s' 2> /dev/null" % dest)
 		self.execute("[ -d '%s' ] ; echo $? " % dest)
@@ -423,8 +424,9 @@ class RemoteExecute:
 
 		for dirpath, dirs, files in os.walk(src_dir, followlinks=True):
 
+			dst_dirpath = dirpath[len(head):]
 			for dir in dirs:
-				dst_path = dst_dir + '/' + dirpath + '/' + dir
+				dst_path = dst_dir + '/' + dst_dirpath + '/' + dir
 				self.execute("mkdir -p '%s' 2> /dev/null" % dst_path)
 				self.execute("[ -d '%s' ] ; echo $? " % dst_path)
 				data = self.fp.readline()
@@ -433,7 +435,7 @@ class RemoteExecute:
 				# FIXME - need to set permissions on dir
 
 			for file in files:
-				dst_path = dst_dir + '/' + dirpath + '/' + file
+				dst_path = dst_dir + '/' + dst_dirpath + '/' + file
 				src_path = dirpath + '/' + file
 				size = self.put_file(src_path, dst_path)
 
