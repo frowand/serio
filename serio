@@ -419,23 +419,38 @@ class RemoteExecute:
 		data = self.fp.readline()
 		if (int(data) != 0):
 			raise Exception("unable to create remote directory '%s': " %dest + data)
-		# FIXME - need to set permissions on dir
+		mode = oct(stat.S_IMODE(os.lstat(src_dir).st_mode))
+		self.execute("chmod '%s' '%s' " % (mode, dest))
+		mode = oct(stat.S_IMODE(os.lstat(src_dir).st_mode))
+		self.execute("chmod '%s' '%s' " % (mode, dest))
 
 		for dirpath, dirs, files in os.walk(src_dir, followlinks=True):
 
 			for dir in dirs:
-				dst_path = dst_dir + '/' + dirpath + '/' + dir
+				rel_path = os.path.relpath(dirpath, src_dir)
+				if rel_path is not '.':
+					dst_path = os.path.join(dest, os.path.join(rel_path, dir))
+				else:
+					dst_path = dest + '/' + dir
 				self.execute("mkdir -p '%s' 2> /dev/null" % dst_path)
 				self.execute("[ -d '%s' ] ; echo $? " % dst_path)
 				data = self.fp.readline()
 				if (int(data) != 0):
 					raise Exception("unable to create remote directory '%s': " % dst_path + data)
-				# FIXME - need to set permissions on dir
+				mode = oct(stat.S_IMODE(os.lstat(src_dir).st_mode))
+				self.execute("chmod '%s' '%s' " % (mode, dst_path))
 
 			for file in files:
-				dst_path = dst_dir + '/' + dirpath + '/' + file
+				rel_path = os.path.relpath(dirpath, src_dir)
+                                if rel_path is not '.':
+                                        dst_path = os.path.join(dest, os.path.join(rel_path, file))
+                                else:
+                                        dst_path = dest + '/' + file
 				src_path = dirpath + '/' + file
 				size = self.put_file(src_path, dst_path)
+				mode = oct(stat.S_IMODE(os.lstat(src_path).st_mode))
+				self.execute("chmod '%s' '%s' " % (mode, dst_path))
+
 
 
 class SerialTerminal(RemoteExecute):
