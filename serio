@@ -612,6 +612,7 @@ Return:
   Otherwise:
      0  no error
      1  --help or argument error
+     4  internal error
 
 	'''
 
@@ -675,8 +676,6 @@ def main():
 
 
 	global verbose
-
-	exit_status      = 0
 
 	action           = None
 	basic            = None
@@ -1039,6 +1038,7 @@ def main():
 
 	elif action == 'cmd':
 		try:
+
 			cmd_str = cmd_str.strip()
 			if len(cmd_str) == 0:
 				# for ssh this would be an interactive session
@@ -1046,18 +1046,18 @@ def main():
 				print 'ERROR: command is required'
 				sys.exit(1)
 			remote_status, data = sterm.cmd(cmd_str, remote_shell)
-			exit_status = remote_status
 			if len(data):
 				print data
+			sys.exit(int(remote_status))
+
 		except Exception, e:
 			print "ERROR:", e
+			sys.exit(4)
 
 	else:
 		print "ERROR: unknown action '%s'" % action
 			
 	sterm.close()
-
-	sys.exit(int(exit_status))
 
 
 if __name__ == '__main__':
