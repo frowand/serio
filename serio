@@ -227,7 +227,11 @@ class RemoteExecute:
 		if cmd_echo == cmd + "\r\n":
 			cmd_echo = self.fp.readline()
 
-	def getfile(self, filename):
+	def get_file(self, filename, destination):
+		global verbose
+
+		if os.path.isdir(destination):
+			destination = destination + '/' + os.path.basename(filename)
 
 		if self.basic:
 			self.execute("cat '%s' && echo '%s'" % (filename, self.DELIM))
@@ -239,7 +243,6 @@ class RemoteExecute:
 			data = data.replace("\r\n", "\n")
 
 			mode = -1
-			return mode, data
 
 		else:
 			if self.checksum == CHECKSUM_MD5SUM:
@@ -287,7 +290,15 @@ class RemoteExecute:
 				if len(outfile.getvalue()) != file_size:
 					raise Exception("size of dest != source")
 
-			return mode, outfile.getvalue()
+			data = outfile.getvalue()
+
+		if len(data):
+			open(destination, "wb").write(data)
+			if mode != -1:
+				os.chmod(destination, mode)
+
+		if verbose > 0:
+			print 'Downloaded %d bytes from %s to %s' % (len(data), src, destination)
 
 
 	def put_file(self, name, destination):
@@ -412,6 +423,16 @@ class RemoteExecute:
 		# Sending output over a terminal turns all \n's to \r\n's
 		result = result.replace("\r\n", "\n")
 		return remote_status, result
+
+	def recursive_get(self, src_dir, dst_dir):
+		# FIXME - this needs to do the mirror image of recursive_put(),
+		#         so reverse which commands are on the host and which
+		#         are on the remote.  the equivalent of os.walk() on
+		#         the remote is:
+		#            for dir in dirs: 'find -type d'
+		#            for file in files: 'find -type f'
+		#         check whether scp follows links, do the same as scp
+		raise Exception('recursive get not implemented')
 
 	def recursive_put(self, src_dir, dst_dir):
 		head, tail = os.path.split(src_dir)
@@ -927,7 +948,7 @@ def main():
 		try:
 
 			# FIXME - need to handle space inside name, either with
-			#         quotes of '\' delimeter
+			#         quotes or '\' delimeter
 
 			# if multiple sources then destination must be a directory
 
@@ -940,6 +961,7 @@ def main():
 
 			if names > 1 or directories:
 
+				# zzz   verify this is consistent with scp
 				sterm.execute('[ ! -e "%s" ] ; echo $?' % destination)
 				status = sterm.fp.readline()
 				if int(status) == 0:
@@ -969,19 +991,47 @@ def main():
 
 	elif action == 'get':
 		try:
-			# FIXME - implement multi-file get
-			if len(source) > 1:
-				raise Exception('multi-file get not implemented')
+			# ------------    NEW   ----------------
+			# FIXME - need to handle space inside name, either with
+			#         quotes or '\' delimeter
 
-			for src in source:
-				mode, data = sterm.getfile(src)
-				if len(data):
-					open(destination, "wb").write(data)
-					if mode != -1:
-						os.chmod(destination, mode)
+			# if multiple sources then destination must be a directory
 
-				if verbose > 0:
-					print 'Downloaded %d bytes from %s to %s' % (len(data), src, destination)
+			names = 0
+			directories = 0
+			for name in source:
+				names += 1
+				sterm.execute("[ -d '%s' ] ; echo $? " % name)
+				status = sterm.fp.readline()
+				if (int(status) == 0):
+					directories += 1
+
+			if names > 1 or directories:
+
+				# zzz   verify this is consistent with scp
+				if not os.path.exists(destination):
+					raise Exception(destination + ": No such file or directory")
+
+				if not os.path.isdir(destination):
+					raise Exception(destination + ": Not a directory")
+
+			for name in source:
+
+				sterm.execute("[ -d '%s' ] ; echo $? " % name)
+				status = sterm.fp.readline()
+				if (int(status) == 0):
+
+					if recurse:
+						sterm.recursive_get(name, destination)
+					else:
+						# follow scp behaviour, do not raise exception
+						print 'ERROR: ' + name + ': not a regular file'
+
+				else:
+					sterm.execute("[ -f '%s' ] ; echo $? " % name)
+					status = sterm.fp.readline()
+					if (int(status) == 0):
+						sterm.get_file(name, destination)
 
 		except Exception, e:
 			print "\nERROR:", e
