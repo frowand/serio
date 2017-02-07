@@ -380,7 +380,7 @@ class RemoteExecute:
 
 		mode = oct(stat.S_IMODE(os.stat(name).st_mode))
 		# FIXME - check for chmod error
-		self.execute("chmod '%s' '%s' 2> /dev/null" % (mode, destination))
+		self.execute("chmod '%s' '%s' 2> /dev/null" % (mode, filename))
 		if verbose > 0:
 			print 'Uploaded %d bytes from %s to %s' % (sent, name, destination)
 
