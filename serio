@@ -975,7 +975,6 @@ def main():
 
 				if verbose > 0:
 					print 'Downloaded %d bytes from %s to %s' % (len(data), src, destination)
-				mode, data = sterm.getfile(src)
 
 		except Exception, e:
 			print "\nERROR:", e
