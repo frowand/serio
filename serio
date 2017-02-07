@@ -447,7 +447,7 @@ class RemoteExecute:
 
 		for dirpath, dirs, files in os.walk(src_dir, followlinks=True):
 
-			dst_dirpath = dirpath[len(head):]
+			dst_dirpath = dirpath[len(head) - 1:]
 			for dir in dirs:
 				dst_path = dst_dir + '/' + dst_dirpath + '/' + dir
 				self.execute("mkdir -p '%s' 2> /dev/null" % dst_path)
