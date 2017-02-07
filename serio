@@ -193,6 +193,8 @@ class RemoteExecute:
 
 
 	def get_prompt(self):
+		# FIXME - this will not work if the shell prompt is zero
+		#         bytes long.  Report error in this case.
 		self.fp.write("# gp\n")
 		data = self.readuntil_time(1)
 		return data.strip()
@@ -452,33 +454,26 @@ class SerialTerminal(RemoteExecute):
 		RemoteExecute.__init__(self, fp=self.serial)
 
 
-def usage_sersh():
+# ----------  serio  ----------
+
+def usage_serio():
 
 	print
-	print 'Usage: %s [OPTIONS] [user @]hostname command' % os.path.basename(sys.argv[0])
+	print 'Usage: %s [OPTIONS]' % os.path.basename(sys.argv[0])
 	print '''
-   -b, --baudrate=<baud>           Serial port baud rate [115200]
-   -B, --basic                     Use basic (minimal) remote system commands
    -h, --help                      Show help
-   -m, --minicom=<name>            Name of the minicom config file to use
-   -N, --no-remote-shell           Do not invoke a remote shell to execute --cmd
-   -T, --timeout=<seconds>         Set read timout on the serial port (float)
-   -v, --verbose                   Print more information (cumulative)
+   --create-links                  Create soft links sercp and sersh
+   --link-path=<PATH>              path to use to in links to this program
+
+   Create soft links to enable use of this program to:
+     - copy files to and from a remote system via a serial link
+       (similar to scp)
+     - execute commands on a remote system via a serial link
+       (similar to ssh)
 
 Notes:
-    - user is ignored
-    - --timeout is a big stick.  Setting <seconds> to a small value will result
-      in errors or unstable behaviour.  <seconds> must be long enough to allow
-      the entire command to be echoed.
-
-Remote System Dependencies:
-  - May hang if the shell prompt is zero bytes long
-  - Remote system shell echos \\r\\n at end of command input
-
-Known Problems:
-  - will hang for command "bash"
-  - will hang for command "exit" (exiting bash)
-  - can not be used to login to a shell
+    - Links will be created in the directory that contains this program
+      if --link-path is not provided
 
 Return:
   If --remote-shell then the exit status of the remote shell.
@@ -488,6 +483,8 @@ Return:
 
 	'''
 
+
+# ----------  sercp  ----------
 
 def usage_sercp():
 
@@ -502,6 +499,9 @@ def usage_sercp():
    -r, --recurse                   Recursively copy directories
    -T, --timeout=<seconds>         Set read timout on the serial port (float)
    -v, --verbose                   Print more information (cumulative)
+
+   Copy files to and from a remote system via a serial link (similar to scp)
+   without requiring a corresponding server on the remote system.
 
 Notes:
     - user1 and user2 are ignored
@@ -532,15 +532,17 @@ Side-effects:
       "stty echo")
 
 Remote System Dependencies:
-  - May hang if the shell prompt is zero bytes long
+  - Will hang if the remote shell prompt is zero bytes long or if the prompt
+    changes after each command
   - Remote system shell built-ins or programs:
     file get --basic  :  cat, echo
     file get          :                uuencode
     file get --md5sum :  stat, md5sum, uuencode
-    file put          :  stty, echo
+    file put          :  [ -d ], echo, stty
 
 Known Problems:
   - the entire file is copied into memory before being written out.
+  - file mode will not be set for file get --basic
 
 Return:
      0  no error
@@ -551,11 +553,46 @@ Return:
 	'''
 
 
-def usage():
-	if os.path.basename(sys.argv[0]) == 'sersh':
-		usage_sersh()
-	if os.path.basename(sys.argv[0]) == 'sercp':
-		usage_sercp()
+# ----------  sersh  ----------
+
+def usage_sersh():
+
+	print
+	print 'Usage: %s [OPTIONS] [user @]hostname command' % os.path.basename(sys.argv[0])
+	print '''
+   -b, --baudrate=<baud>           Serial port baud rate [115200]
+   -B, --basic                     Use basic (minimal) remote system commands
+   -h, --help                      Show help
+   -m, --minicom=<name>            Name of the minicom config file to use
+   -N, --no-remote-shell           Do not invoke a remote shell to execute --cmd
+   -T, --timeout=<seconds>         Set read timout on the serial port (float)
+   -v, --verbose                   Print more information (cumulative)
+
+   Execute commands on a remote system via a serial link (similar to ssh)
+   without requiring a corresponding server on the remote system.
+
+Notes:
+    - user is ignored
+    - --timeout is a big stick.  Setting <seconds> to a small value will result
+      in errors or unstable behaviour.  <seconds> must be long enough to allow
+      the entire command to be echoed.
+
+Remote System Dependencies:
+  - May hang if the shell prompt is zero bytes long
+  - Remote system shell echos \\r\\n at end of command input
+
+Known Problems:
+  - will hang for command "bash"
+  - will hang for command "exit" (exiting bash)
+  - can not be used to login to a shell
+
+Return:
+  If --remote-shell then the exit status of the remote shell.
+  Otherwise:
+     0  no error
+     1  --help or argument error
+
+	'''
 
 
 def main():
@@ -567,7 +604,7 @@ def main():
 		for arg in args[0:len(args)]:
 			# print arg
 
-			# from usage:
+			# from usage_cp:
 			# - host1 and host2 are device names relative to /dev/
 			# This is because scp allows a file name to contain
 			# a ':'.  scp determines that [host1] or [host2] is
@@ -618,98 +655,168 @@ def main():
 
 	global verbose
 
-	exit_status  = 0
-	def_port     = '/dev/ttyUSB0'
+	exit_status      = 0
+	def_port         = '/dev/ttyUSB0'
 
-	action       = None
-	basic        = None
-	baudrate     = 115200
-	checksum     = CHECKSUM_NONE
-	destination  = None
-	timeout      = None
-	minicom      = None
-	port         = None
-	recurse      = None
-	remote_shell = 1
-	source       = None
+	action           = None
+	basic            = None
+	baudrate         = 115200
+	checksum         = CHECKSUM_NONE
+	create_link_path = None
+	create_links     = None
+	destination      = None
+	timeout          = None
+	minicom          = None
+	port             = None
+	recurse          = None
+	remote_shell     = 1
+	source           = None
 
-	try:
-		opts, args = getopt.getopt(sys.argv[1:],
-				    'b:Bc:d:hMNm:rs:T:vy:',
-				    ['baudrate=',
-				     'basic',
-				     'cmd=',
-				     'destination=',
-				     'help',
-				     'md5sum',
-				     'no-remote-shell',
-				     'minicom=',
-				     'recurse',
-				     'source=',
-				     'timeout=',
-				     'verbose',
-				     'port=',
-				    ]
-				   )
-	except getopt.GetoptError, e:
-		print 'Usage error:', e
-		print 'Help available via: \'%s -h\'' % os.path.basename(sys.argv[0])
-		sys.exit(1)
 
-	for opt, arg in opts:
-		if opt in ('-b', '--baudrate'):
-			baudrate = arg
-		elif opt in ('-B', '--basic'):
-			basic = 1
-		elif opt in ('-c', '--cmd'):
-			action = 'cmd'
-			cmd_str = arg
-		elif opt in ('-d', '--destination'):
-			destination = arg
-		elif opt in ('-h', '--help'):
-			usage()
+	# ----------  serio  ----------
+
+	if os.path.basename(sys.argv[0]) == 'serio':
+
+
+		try:
+			opts, args = getopt.getopt(sys.argv[1:],
+					    'h',
+					    [
+					     'create-links',
+					     'help',
+					     'link-path=',
+					    ]
+					   )
+		except getopt.GetoptError, e:
+			print 'Usage error:', e
+			print 'Help available via: \'%s -h\'' % os.path.basename(sys.argv[0])
 			sys.exit(1)
-		elif opt in ('-M', '--md5sum'):
-			checksum = CHECKSUM_MD5SUM
-		elif opt in ('-m', '--minicom'):
-			minicom = ParseMinicom(arg)
-		elif opt in ('-N', '--no-remote-shell'):
-			remote_shell = 0
-		elif opt in ('-r', '--recurse'):
-			recurse = 1
-		elif opt in ('-s', '--source'):
-			source = arg
-		elif opt in ('-T', '--timeout'):
-			timeout = float(arg)
-		elif opt in ('-v', '--verbose'):
-			verbose += 1
-		elif opt in ('-y', '--port'):
-			port = arg
 
+		for opt, arg in opts:
+			if opt in ('--create-links'):
+				create_links = 1
+			elif opt in ('-h', '--help'):
+				usage_serio()
+				sys.exit(1)
+			elif opt in ('--link-path'):
+				create_link_path = arg
 
-	if os.path.basename(sys.argv[0]) == 'sersh':
-		action = 'cmd'
-		tmp_cmd_str = None
-		for arg in args:
-			if tmp_cmd_str is None:
-				tmp_cmd_str = arg
+	# ----------  sercp  ----------
+
+	elif os.path.basename(sys.argv[0]) == 'sercp':
+
+		try:
+			opts, args = getopt.getopt(sys.argv[1:],
+					    'b:BhMm:rT:v',
+					    [
+					     'baudrate=',
+					     'basic',
+					     'help',
+					     'md5sum',
+					     'minicom=',
+					     'recurse',
+					     'timeout=',
+					     'verbose',
+					    ]
+					   )
+		except getopt.GetoptError, e:
+			print 'Usage error:', e
+			print 'Help available via: \'%s -h\'' % os.path.basename(sys.argv[0])
+			sys.exit(1)
+
+		for opt, arg in opts:
+			if opt in ('-b', '--baudrate'):
+				baudrate = arg
+			elif opt in ('-B', '--basic'):
+				basic = 1
+			elif opt in ('-h', '--help'):
+				usage_sercp()
+				sys.exit(1)
+			elif opt in ('-M', '--md5sum'):
+				checksum = CHECKSUM_MD5SUM
+			elif opt in ('-m', '--minicom'):
+				minicom = ParseMinicom(arg)
+			elif opt in ('-r', '--recurse'):
+				recurse = 1
+			elif opt in ('-T', '--timeout'):
+				timeout = float(arg)
+			elif opt in ('-v', '--verbose'):
+				verbose += 1
+
+	# ----------  sersh  ----------
+
+	elif os.path.basename(sys.argv[0]) == 'sersh':
+
+		try:
+			opts, args = getopt.getopt(sys.argv[1:],
+					    'b:B:hNm:T:v',
+					    [
+					     'baudrate=',
+					     'basic',
+					     'help',
+					     'no-remote-shell',
+					     'minicom=',
+					     'timeout=',
+					     'verbose',
+					    ]
+					   )
+		except getopt.GetoptError, e:
+			print 'Usage error:', e
+			print 'Help available via: \'%s -h\'' % os.path.basename(sys.argv[0])
+			sys.exit(1)
+
+		for opt, arg in opts:
+			if opt in ('-b', '--baudrate'):
+				baudrate = arg
+			elif opt in ('-B', '--basic'):
+				basic = 1
+			elif opt in ('-h', '--help'):
+				usage_sersh()
+				sys.exit(1)
+			elif opt in ('-m', '--minicom'):
+				minicom = ParseMinicom(arg)
+			elif opt in ('-N', '--no-remote-shell'):
+				remote_shell = 0
+			elif opt in ('-T', '--timeout'):
+				timeout = float(arg)
+			elif opt in ('-v', '--verbose'):
+				verbose += 1
+
+	# ----------  serio  ----------
+
+	if os.path.basename(sys.argv[0]) == 'serio':
+
+		if len(args) > 0:
+			print 'ERROR: unrecognized parameters'
+			sys.exit(0)
+
+		if create_links:
+			if create_link_path:
+				if not create_link_path.endswith('/'):
+					create_link_path += '/'
+				os.symlink(create_link_path + os.path.basename(sys.argv[0]), 'sercp')
+				os.symlink(create_link_path + os.path.basename(sys.argv[0]), 'sersh')
 			else:
-				tmp_cmd_str = tmp_cmd_str + ' ' + arg
+				# be cowardly: must be in same directory as this program
+				# thus link will not contain any path information
 
-		host_end = tmp_cmd_str.find(' ')
-		if '@' in tmp_cmd_str:
-			# strip off leading [user@]
-			host_start = tmp_cmd_str.find('@') + 1
-		else:
-			host_start = 0
-		host = tmp_cmd_str[host_start:host_end]
-		if '/' in host:
-			port = host
-		else:
-			port = '/dev/' + host
-		cmd_str = tmp_cmd_str[host_end:]
+				head_argv, tail_argv = os.path.split(sys.argv[0])
+				if head_argv is None:
+					print 'ERROR: internal error: head_argv is None'
+					sys.exit(1)
 
-	elif action is None:
+				if os.path.abspath(head_argv) != os.path.abspath(os.getcwd()):
+					print 'ERROR: must specify --link-path if os.path.basename(sys.argv[0]) is not in current directory'
+					exit(1)
+
+				os.symlink(os.path.basename(sys.argv[0]), 'sercp')
+				os.symlink(os.path.basename(sys.argv[0]), 'sersh')
+
+		sys.exit(0)
+
+	# ----------  sercp  ----------
+
+	elif os.path.basename(sys.argv[0]) == 'sercp':
 
 		if len(args) < 2:
 			print 'ERROR: file1 and file2 required'
@@ -732,6 +839,7 @@ def main():
 		#     destination = dst[0:1]
 		# way (2)
 		# this works
+
 		for x in dst[0:1]:
 			destination = x
 		if destination == '':
@@ -743,18 +851,30 @@ def main():
 			action = 'put'
 			port = dst_host
 
-	elif len(args) > 0:
-		print 'ERROR: unrecognized parameters'
-		sys.exit(0)
 
+	# ----------  sersh  ----------
 
-	if action is None:
-		print 'ERROR: must specify either a copy or --cmd'
-		sys.exit(1)
+	elif os.path.basename(sys.argv[0]) == 'sersh':
+		action = 'cmd'
+		tmp_cmd_str = None
+		for arg in args:
+			if tmp_cmd_str is None:
+				tmp_cmd_str = arg
+			else:
+				tmp_cmd_str = tmp_cmd_str + ' ' + arg
 
-	if action in ['get','put']:
-		if destination is None:
-			destination = "."
+		host_end = tmp_cmd_str.find(' ')
+		if '@' in tmp_cmd_str:
+			# strip off leading [user@]
+			host_start = tmp_cmd_str.find('@') + 1
+		else:
+			host_start = 0
+		host = tmp_cmd_str[host_start:host_end]
+		if '/' in host:
+			port = host
+		else:
+			port = '/dev/' + host
+		cmd_str = tmp_cmd_str[host_end:]
 
 	if minicom is not None:
 
