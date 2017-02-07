@@ -656,7 +656,6 @@ def main():
 	global verbose
 
 	exit_status      = 0
-	def_port         = '/dev/ttyUSB0'
 
 	action           = None
 	basic            = None
@@ -863,6 +862,10 @@ def main():
 			else:
 				tmp_cmd_str = tmp_cmd_str + ' ' + arg
 
+		if ' ' not in tmp_cmd_str:
+			print 'ERROR: host and command are required'
+			exit(1)
+
 		host_end = tmp_cmd_str.find(' ')
 		if '@' in tmp_cmd_str:
 			# strip off leading [user@]
@@ -908,10 +911,14 @@ def main():
 		print 'ERROR: "--timeout 0" will result in incorrect behaviour'
 		sys.exit(1)
 
-	if port is None:
-		port = def_port
+	try:
 
-	sterm = SerialTerminal(basic, checksum, port, baudrate, timeout)
+		sterm = SerialTerminal(basic, checksum, port, baudrate, timeout)
+
+	except Exception, e:
+		print "ERROR:", e
+		sys.exit(1)
+
 
 	# required before calls to execute()
 	sterm.prime_before_first_execute()
@@ -982,6 +989,12 @@ def main():
 
 	elif action == 'cmd':
 		try:
+			cmd_str = cmd_str.strip()
+			if len(cmd_str) == 0:
+				# for ssh this would be an interactive session
+				# there is no equivalent for sersh, so this probably
+				print 'ERROR: command is required'
+				sys.exit(1)
 			remote_status, data = sterm.cmd(cmd_str, remote_shell)
 			exit_status = remote_status
 			if len(data):
