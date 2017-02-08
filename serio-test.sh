@@ -78,11 +78,6 @@ while [ $# -gt 0 ] ; do
 			do_cleanup=0
 			;;
 
-		-P | --paranoid )
-			PARANOID="-P"
-			shift
-			;;
-
 		-s | --sleep )
 			shift
 			SLEEP="sleep $1"
@@ -158,8 +153,8 @@ for k in $(seq ${numfiles}) ; do
 done
 
 
-SERCP_ARGS="$PARANOID $BASIC $TIMEOUT"
-SERSH_ARGS="$PARANOID $BASIC $TIMEOUT"
+SERCP_ARGS="$TIMEOUT $BASIC"
+SERSH_ARGS="$TIMEOUT"
 
 # shell builtin 'time' does not recognize -f
 TIME="/usr/bin/time"
