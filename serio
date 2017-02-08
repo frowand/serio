@@ -584,7 +584,6 @@ def usage_sersh():
 	print 'Usage: %s [OPTIONS] [user @]hostname command' % os.path.basename(sys.argv[0])
 	print '''
    -b, --baudrate=<baud>           Serial port baud rate [115200]
-   -B, --basic                     Use basic (minimal) remote system commands
    -h, --help                      Show help
    -m, --minicom=<name>            Name of the minicom config file to use
    -N, --no-remote-shell           Do not invoke a remote shell to execute --cmd
@@ -770,10 +769,9 @@ def main():
 
 		try:
 			opts, args = getopt.getopt(sys.argv[1:],
-					    'b:B:hNm:T:v',
+					    'b:hNm:T:v',
 					    [
 					     'baudrate=',
-					     'basic',
 					     'help',
 					     'no-remote-shell',
 					     'minicom=',
