@@ -34,6 +34,18 @@ import getopt
 import glob
 import stat
 
+# x.y.0 is a release. y increments until an arbitrary point where it becomes
+#       too large, such that the next release is (x+1).0.0
+#
+# x.y.z is a bug fix only release. based on x.y.(z-1)
+#
+# non-release versions have suffix -rc-yymmdd[a-z] (rc == release candidate)
+#     -rc-yymmdd[a-z] may or may not be updated for any given commit, there
+#     is no rule as to when this must be updated, other than the first non
+#     -rc commit, which must add an -rc to the version
+#
+serio_version = '1.0.0-rc-170218a'
+
 # verbose
 #  1  bytes uploaded/downloaded
 #  2  progress
@@ -492,9 +504,10 @@ def usage_serio():
 	print
 	print 'Usage: %s [OPTIONS]' % os.path.basename(sys.argv[0])
 	print '''
-   -h, --help                      Show help
+   -h, --help                      Show help and exit
    --create-links                  Create soft links sercp and sersh
    --link-path=<PATH>              path to use to in links to this program
+   --version                       report program version and exit
 
    Create soft links to enable use of this program to:
      - copy files to and from a remote system via a serial link
@@ -524,12 +537,13 @@ def usage_sercp():
 	print '''
    -b, --baudrate=<baud>           Serial port baud rate [115200]
    -B, --basic                     Use basic (minimal) remote system commands
-   -h, --help                      Show help
+   -h, --help                      Show help and exit
    -M, --md5sum                    verify file transfer with md5sum
    -m, --minicom=<name>            Name of the minicom config file to use
    -r, --recurse                   Recursively copy directories
    -T, --timeout=<seconds>         Set read timout on the serial port (float)
    -v, --verbose                   Print more information (cumulative)
+   --version                       report program version and exit
 
    Copy files to and from a remote system via a serial link (similar to scp)
    without requiring a corresponding server on the remote system.
@@ -592,11 +606,12 @@ def usage_sersh():
 	print 'Usage: %s [OPTIONS] [user @]hostname command' % os.path.basename(sys.argv[0])
 	print '''
    -b, --baudrate=<baud>           Serial port baud rate [115200]
-   -h, --help                      Show help
+   -h, --help                      Show help and exit
    -m, --minicom=<name>            Name of the minicom config file to use
    -N, --no-remote-shell           Do not invoke a remote shell to execute --cmd
    -T, --timeout=<seconds>         Set read timout on the serial port (float)
    -v, --verbose                   Print more information (cumulative)
+   --version                       report program version and exit
 
    Execute commands on a remote system via a serial link (similar to ssh)
    without requiring a corresponding server on the remote system.
@@ -714,6 +729,7 @@ def main():
 					     'create-links',
 					     'help',
 					     'link-path=',
+					     'version',
 					    ]
 					   )
 		except getopt.GetoptError, e:
@@ -729,6 +745,9 @@ def main():
 				sys.exit(EX_OK)
 			elif opt in ('--link-path'):
 				create_link_path = arg
+			elif opt in ('--version'):
+				print serio_version
+				sys.exit(EX_OK)
 
 	# ----------  sercp  ----------
 
@@ -746,6 +765,7 @@ def main():
 					     'recurse',
 					     'timeout=',
 					     'verbose',
+					     'version',
 					    ]
 					   )
 		except getopt.GetoptError, e:
@@ -771,6 +791,9 @@ def main():
 				timeout = float(arg)
 			elif opt in ('-v', '--verbose'):
 				verbose += 1
+			elif opt in ('--version'):
+				print serio_version
+				sys.exit(EX_OK)
 
 	# ----------  sersh  ----------
 
@@ -786,6 +809,7 @@ def main():
 					     'minicom=',
 					     'timeout=',
 					     'verbose',
+					     'version',
 					    ]
 					   )
 		except getopt.GetoptError, e:
@@ -809,6 +833,9 @@ def main():
 				timeout = float(arg)
 			elif opt in ('-v', '--verbose'):
 				verbose += 1
+			elif opt in ('--version'):
+				print serio_version
+				sys.exit(EX_OK)
 
 	# ----------  serio  ----------
 
