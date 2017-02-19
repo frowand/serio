@@ -43,6 +43,14 @@ verbose = 0
 CHECKSUM_NONE   = 0
 CHECKSUM_MD5SUM = 1
 
+# from /usr/include/sysexits.h
+EX_OK          =  0
+EX_USAGE       = 64
+EX_NOHOST      = 68
+EX_SOFTWARE    = 70
+# EX_CANTCREAT   = 73
+# EX_NOPERM      = 77
+
 class ParseMinicom:
 
 	PATH = "/etc/minicom/"
@@ -502,7 +510,7 @@ Return:
   If --remote-shell then the exit status of the remote shell.
   Otherwise:
      0  no error
-     1  --help or argument error
+    64  --help or argument error
 
 	'''
 
@@ -569,9 +577,9 @@ Known Problems:
 
 Return:
      0  no error
-     1  --help or argument error
-     2  file put error
-     3  file get error
+    64  --help or argument error
+    68  invalid host1 or host2
+    70  internal error
 
 	'''
 
@@ -612,8 +620,9 @@ Return:
   If --remote-shell then the exit status of the remote shell.
   Otherwise:
      0  no error
-     1  --help or argument error
-     4  internal error
+    64  --help or argument error
+    68  invalid hostname
+    70  internal error
 
 	'''
 
@@ -662,14 +671,14 @@ def main():
 					host = new_host
 				elif host != new_host:
 					print 'ERROR: all source files must be on the same host'
-					sys.exit(1)
+					sys.exit(EX_USAGE)
 				file = arg[file_start:]
 				files.append(file)
 
 			else:
 				if host is not None:
 					print 'ERROR: all source files must be on the same host'
-					sys.exit(1)
+					sys.exit(EX_USAGE)
 				file = arg
 				files.append(file)
 
@@ -710,14 +719,14 @@ def main():
 		except getopt.GetoptError, e:
 			print 'Usage error:', e
 			print 'Help available via: \'%s -h\'' % os.path.basename(sys.argv[0])
-			sys.exit(1)
+			sys.exit(EX_USAGE)
 
 		for opt, arg in opts:
 			if opt in ('--create-links'):
 				create_links = 1
 			elif opt in ('-h', '--help'):
 				usage_serio()
-				sys.exit(1)
+				sys.exit(EX_OK)
 			elif opt in ('--link-path'):
 				create_link_path = arg
 
@@ -742,7 +751,7 @@ def main():
 		except getopt.GetoptError, e:
 			print 'Usage error:', e
 			print 'Help available via: \'%s -h\'' % os.path.basename(sys.argv[0])
-			sys.exit(1)
+			sys.exit(EX_USAGE)
 
 		for opt, arg in opts:
 			if opt in ('-b', '--baudrate'):
@@ -751,7 +760,7 @@ def main():
 				basic = 1
 			elif opt in ('-h', '--help'):
 				usage_sercp()
-				sys.exit(1)
+				sys.exit(EX_OK)
 			elif opt in ('-M', '--md5sum'):
 				checksum = CHECKSUM_MD5SUM
 			elif opt in ('-m', '--minicom'):
@@ -782,7 +791,7 @@ def main():
 		except getopt.GetoptError, e:
 			print 'Usage error:', e
 			print 'Help available via: \'%s -h\'' % os.path.basename(sys.argv[0])
-			sys.exit(1)
+			sys.exit(EX_USAGE)
 
 		for opt, arg in opts:
 			if opt in ('-b', '--baudrate'):
@@ -791,7 +800,7 @@ def main():
 				basic = 1
 			elif opt in ('-h', '--help'):
 				usage_sersh()
-				sys.exit(1)
+				sys.exit(EX_OK)
 			elif opt in ('-m', '--minicom'):
 				minicom = ParseMinicom(arg)
 			elif opt in ('-N', '--no-remote-shell'):
@@ -807,7 +816,7 @@ def main():
 
 		if len(args) > 0:
 			print 'ERROR: unrecognized parameters'
-			sys.exit(0)
+			sys.exit(EX_USAGE)
 
 		if create_links:
 			if create_link_path:
@@ -822,16 +831,16 @@ def main():
 				head_argv, tail_argv = os.path.split(sys.argv[0])
 				if head_argv is None:
 					print 'ERROR: internal error: head_argv is None'
-					sys.exit(1)
+					sys.exit(EX_SOFTWARE)
 
 				if os.path.abspath(head_argv) != os.path.abspath(os.getcwd()):
 					print 'ERROR: must specify --link-path if os.path.basename(sys.argv[0]) is not in current directory'
-					exit(1)
+					exit(EX_USAGE)
 
 				os.symlink(os.path.basename(sys.argv[0]), 'sercp')
 				os.symlink(os.path.basename(sys.argv[0]), 'sersh')
 
-		sys.exit(0)
+		sys.exit(EX_OK)
 
 	# ----------  sercp  ----------
 
@@ -839,7 +848,7 @@ def main():
 
 		if len(args) < 2:
 			print 'ERROR: file1 and file2 required'
-			sys.exit(1)
+			sys.exit(EX_USAGE)
 
 		src_host, source = parse_arg_for_files(args[0:len(args) - 1])
 		dst_host, dst    = parse_arg_for_files(args[len(args) - 1:])
@@ -847,7 +856,7 @@ def main():
 		if src_host:
 			if dst_host:
 				print 'ERROR: file1 xor file2 must be remote'
-				sys.exit(1)
+				sys.exit(EX_USAGE)
 			action = 'get'
 			port = src_host
 
@@ -866,7 +875,7 @@ def main():
 		if dst_host:
 			if src_host:
 				print 'ERROR: file1 xor file2 must be remote'
-				sys.exit(1)
+				sys.exit(EX_USAGE)
 			action = 'put'
 			port = dst_host
 
@@ -884,7 +893,7 @@ def main():
 
 		if ' ' not in tmp_cmd_str:
 			print 'ERROR: host and command are required'
-			exit(1)
+			exit(EX_USAGE)
 
 		host_end = tmp_cmd_str.find(' ')
 		if '@' in tmp_cmd_str:
@@ -907,7 +916,7 @@ def main():
 		else:
 			if port != m_port:
 				print 'ERROR: host in filespec does not match port from --minicom'
-				sys.exit(1)
+				sys.exit(EX_USAGE)
 
 		m_baudrate = minicom.baudrate()
 		if not m_baudrate is None:
@@ -929,7 +938,7 @@ def main():
 		#           execute().  [[ sterm.fp.timeout ]]
 
 		print 'ERROR: "--timeout 0" will result in incorrect behaviour'
-		sys.exit(1)
+		sys.exit(EX_USAGE)
 
 	try:
 
@@ -937,7 +946,7 @@ def main():
 
 	except Exception, e:
 		print "ERROR:", e
-		sys.exit(1)
+		sys.exit(EX_NOHOST)
 
 
 	# required before calls to execute()
@@ -986,7 +995,7 @@ def main():
 
 		except Exception, e:
 			print "ERROR:", e
-			sys.exit(2)
+			sys.exit(EX_SOFTWARE)
 
 	elif action == 'get':
 		try:
@@ -1034,7 +1043,7 @@ def main():
 
 		except Exception, e:
 			print "\nERROR:", e
-			sys.exit(3)
+			sys.exit(EX_SOFTWARE)
 
 	elif action == 'cmd':
 		try:
@@ -1044,7 +1053,7 @@ def main():
 				# for ssh this would be an interactive session
 				# there is no equivalent for sersh, so this probably
 				print 'ERROR: command is required'
-				sys.exit(1)
+				sys.exit(EX_USAGE)
 			remote_status, data = sterm.cmd(cmd_str, remote_shell)
 			if len(data):
 				print data
@@ -1052,7 +1061,7 @@ def main():
 
 		except Exception, e:
 			print "ERROR:", e
-			sys.exit(4)
+			sys.exit(EX_SOFTWARE)
 
 	else:
 		print "ERROR: unknown action '%s'" % action
