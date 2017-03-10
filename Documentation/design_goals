@@ -8,7 +8,7 @@ programs on the remote system.
   - The remote system is expected to have a shell attached to the serial port.
 
   - The remote system is expected to have at least some basic commands and
-    programs as provided by busybox or toybox.
+    programs, such as provided by busybox or toybox.
 
 serio may implement methods of file transfer that utilize more extensive
 capabilities on the remote system for reasons such as improved throughput
