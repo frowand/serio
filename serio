@@ -550,9 +550,10 @@ def usage_sercp():
 
 Notes:
     - user1 and user2 are ignored
+    - host1 and host2 are serial device names, relative to "/dev/".
     - scp distinguished a filename containing ":" from a host by finding
       a "/" before the ":".  This means that "host1" and "host2" may not
-      contains a "/".  Due to this constraint "host1" and "host2" are device
+      contain a "/".  Due to this constraint "host1" and "host2" are device
       names relative to "/dev/".
     - All source files ("file1 ...") must be on the same host.
     - The source files ("file1 ...") and the destination location ("file2")
@@ -603,7 +604,7 @@ Return:
 def usage_sersh():
 
 	print
-	print 'Usage: %s [OPTIONS] [user @]hostname command' % os.path.basename(sys.argv[0])
+	print 'Usage: %s [OPTIONS] [user @]host command' % os.path.basename(sys.argv[0])
 	print '''
    -b, --baudrate=<baud>           Serial port baud rate [115200]
    -h, --help                      Show help and exit
@@ -618,6 +619,7 @@ def usage_sersh():
 
 Notes:
     - user is ignored
+    - host is a serial device name, relative to "/dev/".
     - --timeout is a big stick.  Setting <seconds> to a small value will result
       in errors or unstable behaviour.  <seconds> must be long enough to allow
       the entire command to be echoed.
@@ -636,7 +638,7 @@ Return:
   Otherwise:
      0  no error
     64  --help or argument error
-    68  invalid hostname
+    68  invalid host
     70  internal error
 
 	'''
