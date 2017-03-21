@@ -322,7 +322,7 @@ class RemoteExecute:
 				os.chmod(destination, mode)
 
 		if verbose > 0:
-			print 'Downloaded %d bytes from %s to %s' % (len(data), src, destination)
+			print 'Downloaded %d bytes from %s to %s' % (len(data), filename, destination)
 
 
 	def put_file(self, name, destination):
