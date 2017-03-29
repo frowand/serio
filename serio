@@ -586,6 +586,12 @@ Remote System Dependencies:
     file get --md5sum :  stat, md5sum, uuencode
     file put          :  [ -d ], echo, stty
 
+Common errors:
+  - serial.serialutil.SerialException: device reports readiness to read but returned no data (device disconnected?)
+
+      This error may occur if another program (such as minicom) is connected
+      to the serial device.
+
 Known Problems:
   - the entire file is copied into memory before being written out.
   - file mode will not be set for file get --basic
