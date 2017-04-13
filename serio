@@ -44,7 +44,7 @@ import stat
 #     is no rule as to when this must be updated, other than the first non
 #     -rc commit, which must add an -rc to the version
 #
-serio_version = '1.0.0-rc-170218a'
+serio_version = '1.0.0-rc-170413a'
 
 # verbose
 #  1  bytes uploaded/downloaded
