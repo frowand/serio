@@ -537,6 +537,7 @@ def usage_sercp():
 	print '''
    -b, --baudrate=<baud>           Serial port baud rate [115200]
    -B, --basic                     Use basic (minimal) remote system commands
+   -d, --device=<device path>      Use serial device specified
    -h, --help                      Show help and exit
    -M, --md5sum                    verify file transfer with md5sum
    -m, --minicom=<name>            Name of the minicom config file to use
@@ -555,6 +556,13 @@ Notes:
       a "/" before the ":".  This means that "host1" and "host2" may not
       contain a "/".  Due to this constraint "host1" and "host2" are device
       names relative to "/dev/".
+    - if a device path is specified, then it should be a fully-qualified path
+      (not relative to '/dev/'), and you should use "serial" in the source
+      or destination path as the host.  In this case the hostname is just
+      a placeholder.
+ ex: sercp -d /dev/serial/by-path/pci-0000:00:00-usb-0:3:1.4 file1 serial:/tmp
+      If multiple source files are specified, the hostname must be the
+      same for each one.
     - All source files ("file1 ...") must be on the same host.
     - The source files ("file1 ...") and the destination location ("file2")
       must be on different hosts.  Local copies and copies between remote
@@ -625,7 +633,8 @@ def usage_sersh():
 
 Notes:
     - user is ignored
-    - host is a serial device name, relative to "/dev/".
+    - host is a serial device name, relative to "/dev/", or a full path
+      to the serial device, starting with "/".
     - --timeout is a big stick.  Setting <seconds> to a small value will result
       in errors or unstable behaviour.  <seconds> must be long enough to allow
       the entire command to be echoed.
@@ -652,7 +661,7 @@ Return:
 
 def main():
 
-	def parse_arg_for_files(args):
+	def parse_arg_for_files(args, device_path):
 		host = None
 		files = []
 
@@ -687,9 +696,7 @@ def main():
 					host_start = arg.find('@') + 1
 				else:
 					host_start = 0
-				new_host = arg[host_start:host_end]
-				if not '/' in new_host:
-					new_host = '/dev/' + new_host
+				new_host = "/dev/"+arg[host_start:host_end]
 				if host is None:
 					host = new_host
 				elif host != new_host:
@@ -705,6 +712,9 @@ def main():
 				file = arg
 				files.append(file)
 
+		if host is not None and device_path is not None:
+			host = device_path
+
 		return host, files
 
 
@@ -717,6 +727,7 @@ def main():
 	create_link_path = None
 	create_links     = None
 	destination      = None
+	device_path      = None
 	timeout          = None
 	minicom          = None
 	port             = None
@@ -763,10 +774,11 @@ def main():
 
 		try:
 			opts, args = getopt.getopt(sys.argv[1:],
-					    'b:BhMm:rT:v',
+					    'b:Bd:hMm:rT:v',
 					    [
 					     'baudrate=',
 					     'basic',
+					     'device=',
 					     'help',
 					     'md5sum',
 					     'minicom=',
@@ -786,6 +798,8 @@ def main():
 				baudrate = arg
 			elif opt in ('-B', '--basic'):
 				basic = 1
+			elif opt in ('-d', '--device'):
+				device_path = arg
 			elif opt in ('-h', '--help'):
 				usage_sercp()
 				sys.exit(EX_OK)
@@ -885,8 +899,8 @@ def main():
 			print 'ERROR: file1 and file2 required'
 			sys.exit(EX_USAGE)
 
-		src_host, source = parse_arg_for_files(args[0:len(args) - 1])
-		dst_host, dst    = parse_arg_for_files(args[len(args) - 1:])
+		src_host, source = parse_arg_for_files(args[0:len(args) - 1], device_path)
+		dst_host, dst    = parse_arg_for_files(args[len(args) - 1:], device_path)
 
 		if src_host:
 			if dst_host:
