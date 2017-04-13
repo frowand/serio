@@ -71,7 +71,7 @@ class ParseMinicom:
 
 	def __init__(self, name):
 		path = self.PATH + self.PREFIX + name
-		
+
 		for line in open(path).readlines():
 			for key,value in self.CONF.iteritems():
 				if line.startswith('pu ' + key):
@@ -108,7 +108,7 @@ class RemoteExecute:
 			raise Exception("bad fp object!")
 
 	def progress(self, current, total):
-		
+
 		if not self.showprogress:
 			return
 
@@ -160,7 +160,7 @@ class RemoteExecute:
 			#         consider moving it here:
 			#            consume '\n' leftover from readuntil()
 			#            self.fp.readline()
-	
+
 		self.progress(len(data), len(data))
 		if self.showprogress > 0:
 			print
@@ -1100,7 +1100,7 @@ def main():
 
 	else:
 		print "ERROR: unknown action '%s'" % action
-			
+
 	sterm.close()
 
 
