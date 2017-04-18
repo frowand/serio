@@ -902,6 +902,10 @@ def main():
 		src_host, source = parse_arg_for_files(args[0:len(args) - 1], device_path)
 		dst_host, dst    = parse_arg_for_files(args[len(args) - 1:], device_path)
 
+		if src_host is None and dst_host is None:
+			print 'ERROR: file1 xor file2 must be remote'
+			sys.exit(EX_USAGE)
+
 		if src_host:
 			if dst_host:
 				print 'ERROR: file1 xor file2 must be remote'
