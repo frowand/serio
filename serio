@@ -601,8 +601,11 @@ Common errors:
       to the serial device.
 
 Known Problems:
-  - the entire file is copied into memory before being written out.
-  - file mode will not be set for file get --basic
+  - The entire file is copied into memory before being written out.  One
+    workaround for this is to use the 'split' command on the target to
+    create a collection of smaller files, then use the 'cat' command on
+    the host to reassemble the collection into a single file.
+  - File mode will not be set for file get --basic.
 
 Return:
      0  no error
