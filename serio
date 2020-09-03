@@ -952,7 +952,7 @@ def main():
 			exit(EX_USAGE)
 
 		host_end = tmp_cmd_str.find(' ')
-		if '@' in tmp_cmd_str:
+		if '@' in tmp_cmd_str[0:host_end]:
 			# strip off leading [user@]
 			host_start = tmp_cmd_str.find('@') + 1
 		else:
